@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  manager
+  analyst
+  viewer
+}
+
+enum TransactionType {
+  emprestimo
+  devolucao
+  ajuste
+  rateio
+  correcao
+  estorno
+  transferencia_operacional
+}
+
+enum TransactionStatus {
+  pending_return
+  partially_returned
+  fully_returned
+  completed
+}
+
+model User {
+  id           String         @id @default(uuid()) @db.Uuid
+  email        String         @unique
+  name         String
+  passwordHash String         @map("password_hash")
+  role         UserRole       @default(viewer)
+  isActive     Boolean        @default(true) @map("is_active")
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  refreshTokens RefreshToken[]
+  auditLogs    AuditLog[]
+  transactions Transaction[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+model Account {
+  id                  String        @id @default(uuid()) @db.Uuid
+  name                String        @unique
+  accountNumber       String?       @unique @map("account_number")
+  description         String?
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sourceTransactions  Transaction[] @relation("SourceAccount")
+  destinationTransactions Transaction[] @relation("DestinationAccount")
+
+  @@map("accounts")
+}
+
+model Transaction {
+  id                   String            @id @default(uuid()) @db.Uuid
+  uniqueIdentifier     String            @unique @map("unique_identifier")
+  sourceAccountId      String            @map("source_account_id") @db.Uuid
+  destinationAccountId String            @map("destination_account_id") @db.Uuid
+  transactionDate      DateTime          @map("transaction_date") @db.Timestamptz(6)
+  amount               Decimal           @db.Decimal(15, 2)
+  transactionType      TransactionType   @map("transaction_type")
+  description          String
+  parentTransactionId  String?           @map("parent_transaction_id") @db.Uuid
+  status               TransactionStatus @default(completed)
+  createdById          String?           @map("created_by_id") @db.Uuid
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  sourceAccount      Account       @relation("SourceAccount", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+  destinationAccount Account       @relation("DestinationAccount", fields: [destinationAccountId], references: [id], onDelete: Restrict)
+  parentTransaction  Transaction?  @relation("TransactionReturns", fields: [parentTransactionId], references: [id], onDelete: SetNull)
+  returns            Transaction[] @relation("TransactionReturns")
+  createdBy          User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([transactionDate, transactionType])
+  @@index([sourceAccountId, destinationAccountId])
+  @@index([parentTransactionId])
+  @@index([status])
+  @@map("transactions")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id") @db.Uuid
+  metadata   Json?
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@map("audit_logs")
+}
+
+model ImportBatch {
+  id            String   @id @default(uuid()) @db.Uuid
+  source        String
+  filename      String?
+  totalRows     Int      @map("total_rows")
+  importedRows  Int      @map("imported_rows")
+  skippedRows   Int      @map("skipped_rows")
+  errors        Json?
+  createdById   String?  @map("created_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("import_batches")
+}
+
+model AiInsightRun {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  filters   Json?
+  prompt    String
+  response  String
+  model     String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@map("ai_insight_runs")
+}
