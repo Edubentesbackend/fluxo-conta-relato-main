@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./load-env.js";
 import { z } from "zod";
 
 const envSchema = z.object({
@@ -9,6 +9,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(12),
   JWT_EXPIRES_IN: z.string().default("15m"),
   REFRESH_TOKEN_DAYS: z.coerce.number().int().positive().default(30),
+  PASSWORD_PEPPER: z.string().min(32),
   ANTHROPIC_API_KEY: z.string().optional().default(""),
   CLAUDE_MODEL: z.string().default("claude-3-5-sonnet-latest"),
 });

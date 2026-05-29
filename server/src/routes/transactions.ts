@@ -62,8 +62,13 @@ export async function transactionRoutes(app: FastifyInstance) {
     const user = request.user as AuthUser;
     const input = createTransactionSchema.parse(request.body);
     const transaction = await createTransaction({
-      ...input,
+      source_account_id: input.source_account_id,
+      destination_account_id: input.destination_account_id,
+      transaction_date: input.transaction_date,
+      amount: input.amount,
       transaction_type: input.transaction_type as TransactionType,
+      description: input.description,
+      parent_transaction_id: input.parent_transaction_id,
     }, user.sub);
     reply.code(201);
     return transaction;

@@ -77,14 +77,18 @@ const videoTutorials = [
 ]
 
 interface HelpCenterProps {
-  trigger?: React.ReactNode
+  trigger?: React.ReactNode | null
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function HelpCenter({ trigger }: HelpCenterProps) {
-  const [open, setOpen] = React.useState(false)
+export function HelpCenter({ trigger, open: controlledOpen, onOpenChange }: HelpCenterProps) {
+  const [internalOpen, setInternalOpen] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState("")
   const [selectedCategory, setSelectedCategory] = React.useState("Todos")
   const [activeTab, setActiveTab] = React.useState<"faq" | "videos" | "contact">("faq")
+  const open = controlledOpen ?? internalOpen
+  const setOpen = onOpenChange ?? setInternalOpen
 
   const filteredFAQs = React.useMemo(() => {
     return faqData.filter(item => {
@@ -98,14 +102,16 @@ export function HelpCenter({ trigger }: HelpCenterProps) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button variant="ghost" size="sm" className="gap-2">
-            <HelpCircle className="h-4 w-4" />
-            Central de Ajuda
-          </Button>
-        )}
-      </DialogTrigger>
+      {trigger !== null && (
+        <DialogTrigger asChild>
+          {trigger || (
+            <Button variant="ghost" size="sm" className="gap-2">
+              <HelpCircle className="h-4 w-4" />
+              Central de Ajuda
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
         <DialogHeader>

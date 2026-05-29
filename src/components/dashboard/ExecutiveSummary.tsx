@@ -21,9 +21,11 @@ interface ExecutiveSummaryProps {
   insights: TransactionInsights
   monthlyData: MonthlyVolume[]
   isLoading?: boolean
+  aiSummary?: string
+  aiLoading?: boolean
 }
 
-export function ExecutiveSummary({ insights, monthlyData, isLoading }: ExecutiveSummaryProps) {
+export function ExecutiveSummary({ insights, monthlyData, isLoading, aiSummary, aiLoading }: ExecutiveSummaryProps) {
   if (isLoading) {
     return (
       <Card className="col-span-full">
@@ -231,8 +233,26 @@ export function ExecutiveSummary({ insights, monthlyData, isLoading }: Executive
             </SmartTooltip>
           </div>
 
+          {aiSummary && (
+            <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+              <h4 className="font-semibold text-lg flex items-center gap-2">
+                <Brain className="h-4 w-4 text-primary" />
+                Insights Claude
+              </h4>
+              <p className="text-sm text-muted-foreground whitespace-pre-line">
+                {aiSummary}
+              </p>
+            </div>
+          )}
+
+          {aiLoading && !aiSummary && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-muted-foreground">
+              Gerando insights com Claude...
+            </div>
+          )}
+
           {/* AI Insights */}
-          {aiInsights.length > 0 && (
+          {!aiSummary && aiInsights.length > 0 && (
             <div className="space-y-3">
               <h4 className="font-semibold text-lg flex items-center gap-2">
                 <Brain className="h-4 w-4 text-primary" />

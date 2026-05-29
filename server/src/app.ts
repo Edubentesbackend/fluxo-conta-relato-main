@@ -67,6 +67,14 @@ export function buildApp() {
       }
     }
 
+    if (error instanceof Prisma.PrismaClientInitializationError) {
+      reply.status(503).send({
+        error: "Banco de dados indisponivel. Verifique se o PostgreSQL esta rodando em localhost:5432.",
+        code: "DATABASE_UNAVAILABLE",
+      });
+      return;
+    }
+
     reply.status(500).send({ error: "Erro interno", code: "INTERNAL_ERROR" });
   });
 

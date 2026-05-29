@@ -42,9 +42,9 @@ export const AdvancedAccountFilters: React.FC<AdvancedAccountFiltersProps> = ({
             Filtros Avançados
           </h3>
           {hasActiveFilters && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={onReset}
               className="text-muted-foreground hover:text-foreground"
             >
@@ -55,7 +55,6 @@ export const AdvancedAccountFilters: React.FC<AdvancedAccountFiltersProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {/* Status Filter */}
           <div className="space-y-2">
             <Label htmlFor="status" className="text-sm font-medium">Status</Label>
             <Select value={filters.status} onValueChange={(value) => updateFilter('status', value)}>
@@ -72,7 +71,6 @@ export const AdvancedAccountFilters: React.FC<AdvancedAccountFiltersProps> = ({
             </Select>
           </div>
 
-          {/* Type Filter */}
           <div className="space-y-2">
             <Label htmlFor="type" className="text-sm font-medium">Tipo</Label>
             <Select value={filters.type} onValueChange={(value) => updateFilter('type', value)}>
@@ -90,7 +88,6 @@ export const AdvancedAccountFilters: React.FC<AdvancedAccountFiltersProps> = ({
             </Select>
           </div>
 
-          {/* Min Value Filter */}
           <div className="space-y-2">
             <Label htmlFor="minValue" className="text-sm font-medium">Valor Mínimo</Label>
             <Input
@@ -103,7 +100,6 @@ export const AdvancedAccountFilters: React.FC<AdvancedAccountFiltersProps> = ({
             />
           </div>
 
-          {/* Max Value Filter */}
           <div className="space-y-2">
             <Label htmlFor="maxValue" className="text-sm font-medium">Valor Máximo</Label>
             <Input
@@ -116,7 +112,6 @@ export const AdvancedAccountFilters: React.FC<AdvancedAccountFiltersProps> = ({
             />
           </div>
 
-          {/* Age Filter */}
           <div className="space-y-2">
             <Label htmlFor="age" className="text-sm font-medium">Antiguidade</Label>
             <Select value={filters.age} onValueChange={(value) => updateFilter('age', value)}>
@@ -133,7 +128,6 @@ export const AdvancedAccountFilters: React.FC<AdvancedAccountFiltersProps> = ({
             </Select>
           </div>
 
-          {/* Search Filter */}
           <div className="space-y-2">
             <Label htmlFor="search" className="text-sm font-medium">Buscar</Label>
             <div className="relative">

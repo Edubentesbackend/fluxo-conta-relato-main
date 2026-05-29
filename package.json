@@ -15,8 +15,8 @@
     "prisma:migrate": "prisma migrate dev --schema server/prisma/schema.prisma",
     "prisma:deploy": "prisma migrate deploy --schema server/prisma/schema.prisma",
     "prisma:seed": "tsx server/prisma/seed.ts",
-    "supabase:export": "tsx server/scripts/export-supabase.ts",
-    "supabase:import": "tsx server/scripts/import-supabase-export.ts",
+    "supabase:export": "tsx server/prisma/scripts/export-supabase.ts",
+    "supabase:import": "tsx server/prisma/scripts/import-supabase-export.ts",
     "test:api": "vitest run server/tests"
   },
   "dependencies": {
@@ -53,8 +53,8 @@
     "@radix-ui/react-tooltip": "^1.2.7",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.18.0",
-    "@supabase/supabase-js": "^2.55.0",
     "@tanstack/react-query": "^5.83.0",
+    "argon2": "^0.44.0",
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -63,6 +63,7 @@
     "dotenv": "^17.2.1",
     "embla-carousel-react": "^8.6.0",
     "fastify": "^5.4.0",
+    "fastify-plugin": "^5.0.1",
     "framer-motion": "^12.23.13",
     "html2canvas": "^1.4.1",
     "input-otp": "^1.4.2",

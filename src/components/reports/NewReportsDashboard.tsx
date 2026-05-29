@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { BarChart3, FileText, TrendingUp, Filter, RefreshCw, Download, Play, Eye, Settings, Bell } from 'lucide-react';
 
-import { KPICards } from './Dashboard/KPICards';
-import { ActivityChart } from './Dashboard/ActivityChart';
-import { AdvancedMetrics } from './Dashboard/AdvancedMetrics';
+import { KPICards } from './dashboard/KPICards';
+import { ActivityChart } from './dashboard/ActivityChart';
+import { AdvancedMetrics } from './dashboard/AdvancedMetrics';
 import { CEODashboard } from '@/components/dashboard/ProfileDashboards/CEODashboard';
 import { CFODashboard } from '@/components/dashboard/ProfileDashboards/CFODashboard';
 import { ManagerDashboard } from '@/components/dashboard/ProfileDashboards/ManagerDashboard';
@@ -26,17 +26,17 @@ import { GuidedTour, TourTrigger } from '@/components/ui/guided-tour';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { HelpCenter } from '@/components/ui/help-center';
 import { PWAInstaller } from '@/components/ui/pwa-installer';
-import { AdvancedFilters, AdvancedFiltersData } from './Filters/AdvancedFilters';
-import { InteractiveTable } from './Tables/InteractiveTable';
+import { AdvancedFilters, AdvancedFiltersData } from './filters/AdvancedFilters';
+import { InteractiveTable } from './tables/InteractiveTable';
 import { ReturnsTracker } from '@/components/reports/ReturnsTracker';
 import { SegregatedBalanceReport } from '@/components/reports/SegregatedBalanceReport';
 
-import { useTransactionInsights, useMonthlyVolumes, useOptimizedAccountSummaries } from '@/hooks/useReportsData';
+import { useTransactionInsights, useMonthlyVolumes, useOptimizedAccountSummaries, useExecutiveInsights } from '@/hooks/useReportsData';
 import { useTransactions, TransactionWithAccounts } from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
 import { formatCurrency } from '@/utils/currency';
 import { TRANSACTION_TYPES, Transaction } from '@/types/database';
-import { exportAccountSummariesToExcel, exportTransactionsToExcel, exportInsightsToExcel, exportAccountSummariesToPDF, exportInsightsToPDF } from './Export/ExportHelpers';
+import { exportAccountSummariesToExcel, exportTransactionsToExcel, exportInsightsToExcel, exportAccountSummariesToPDF, exportInsightsToPDF } from './export/ExportHelpers';
 
 export const NewReportsDashboard = () => {
   const [filters, setFilters] = useState<AdvancedFiltersData>({});
@@ -45,6 +45,7 @@ export const NewReportsDashboard = () => {
   const [presentationMode, setPresentationMode] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<DashboardProfile>("ceo");
   const [showFilters, setShowFilters] = useState(false);
+  const queryClient = useQueryClient();
   
   const handleAccountClick = (accountId: string) => {
     setFilters(prev => ({ ...prev, accountId }));
@@ -53,6 +54,10 @@ export const NewReportsDashboard = () => {
 
   // Data hooks
   const { data: insights, isLoading: insightsLoading, refetch: refetchInsights } = useTransactionInsights(filters);
+  const { data: executiveInsights, isLoading: executiveInsightsLoading } = useExecutiveInsights(
+    filters,
+    selectedProfile === 'ceo'
+  );
   
   const { data: monthlyData, isLoading: monthlyLoading } = useMonthlyVolumes(filters, 12);
   const { data: accountSummaries, isLoading: summariesLoading } = useOptimizedAccountSummaries(filters);
@@ -211,10 +216,10 @@ export const NewReportsDashboard = () => {
   const handleRefresh = () => {
     refetchInsights();
     // Invalidate other queries too
-    const queryClient = useQueryClient();
     queryClient.invalidateQueries({ queryKey: ['monthly-volumes'] });
     queryClient.invalidateQueries({ queryKey: ['optimized-account-summaries'] });
     queryClient.invalidateQueries({ queryKey: ['transactions'] });
+    queryClient.invalidateQueries({ queryKey: ['executive-insights-ai'] });
   };
 
   const activeFiltersCount = Object.values(filters).filter(Boolean).length;
@@ -231,7 +236,7 @@ export const NewReportsDashboard = () => {
     {
       id: "executive-summary",
       title: "Resumo Executivo com IA",
-      content: "Insights automáticos gerados por IA (Gemini) para tomada de decisão rápida. Clique no card para expandir e ver mais detalhes.",
+      content: "Insights automaticos gerados por Claude para tomada de decisao rapida. Clique no card para expandir e ver mais detalhes.",
       target: "[data-tour='executive-summary']", 
       position: "bottom" as const
     },
@@ -418,6 +423,8 @@ export const NewReportsDashboard = () => {
               monthlyData={monthlyData ?? []}
               transactions={transactions ?? []}
               isLoading={insightsLoading || monthlyLoading}
+              aiSummary={executiveInsights?.insights}
+              aiLoading={executiveInsightsLoading}
             />
           )}
 

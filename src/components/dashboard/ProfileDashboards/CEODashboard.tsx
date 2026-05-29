@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, Target, Users, AlertCircle } from "lucide-react";
 import { ExecutiveSummary } from "../ExecutiveSummary";
-import { ActivityChart } from "../../reports/Dashboard/ActivityChart";
+import { ActivityChart } from "../../reports/dashboard/ActivityChart";
 import { HeatmapChart } from "../HeatmapChart";
 import { TransactionInsights, MonthlyVolume } from "@/hooks/useReportsData";
 import { TransactionWithAccounts } from "@/hooks/useTransactions";
@@ -12,9 +12,11 @@ interface CEODashboardProps {
   monthlyData: MonthlyVolume[];
   transactions: TransactionWithAccounts[];
   isLoading?: boolean;
+  aiSummary?: string;
+  aiLoading?: boolean;
 }
 
-export function CEODashboard({ insights, monthlyData, transactions, isLoading }: CEODashboardProps) {
+export function CEODashboard({ insights, monthlyData, transactions, isLoading, aiSummary, aiLoading }: CEODashboardProps) {
   return (
     <div className="space-y-6" data-tour="ceo-dashboard">
       <motion.div
@@ -72,6 +74,8 @@ export function CEODashboard({ insights, monthlyData, transactions, isLoading }:
         insights={insights} 
         monthlyData={monthlyData}
         isLoading={isLoading}
+        aiSummary={aiSummary}
+        aiLoading={aiLoading}
       />
 
       <div className="grid gap-6 md:grid-cols-2">

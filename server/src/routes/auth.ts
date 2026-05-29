@@ -1,9 +1,14 @@
 import type { FastifyInstance } from "fastify";
-import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { env } from "../env.js";
 import { prisma } from "../lib/prisma.js";
+import {
+  buildPasswordCredential,
+  PASSWORD_CREDENTIAL_TYPE,
+  PASSWORD_HASH_ALGORITHM,
+  verifyPassword,
+} from "../services/password-service.js";
 import { badRequest, unauthorized } from "../utils/errors.js";
 import type { AuthUser } from "../types.js";
 
@@ -73,12 +78,36 @@ async function issueTokens(app: FastifyInstance, user: {
 export async function authRoutes(app: FastifyInstance) {
   app.post("/login", async (request) => {
     const input = loginSchema.parse(request.body);
-    const user = await prisma.user.findUnique({ where: { email: input.email } });
+    const user = await prisma.user.findUnique({
+      where: { email: input.email },
+      include: {
+        credentials: {
+          where: { credentialType: PASSWORD_CREDENTIAL_TYPE },
+          take: 1,
+        },
+      },
+    });
 
     if (!user?.isActive) throw unauthorized("Credenciais invalidas");
 
-    const passwordOk = await bcrypt.compare(input.password, user.passwordHash);
+    const credential = user.credentials[0];
+    if (!credential) throw unauthorized("Credenciais invalidas");
+
+    const passwordOk = await verifyPassword(input.password, credential.secretHash, credential.hashAlgorithm);
     if (!passwordOk) throw unauthorized("Credenciais invalidas");
+
+    if (credential.hashAlgorithm !== PASSWORD_HASH_ALGORITHM) {
+      const nextCredential = await buildPasswordCredential(input.password);
+      await prisma.userCredential.update({
+        where: { id: credential.id },
+        data: {
+          secretHash: nextCredential.secretHash,
+          hashAlgorithm: nextCredential.hashAlgorithm,
+          hashParams: nextCredential.hashParams,
+          pepperVersion: nextCredential.pepperVersion,
+        },
+      });
+    }
 
     return issueTokens(app, user);
   });

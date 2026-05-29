@@ -4,12 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TransactionForm } from '@/components/TransactionForm';
 import { AccountImport } from '@/components/AccountImport';
 import { NewReportsDashboard } from '@/components/reports/NewReportsDashboard';
+import { UserAccountMenu } from '@/components/UserAccountMenu';
 import { TrendingUp, Plus, Upload, BarChart3, Sparkles } from 'lucide-react';
 
 const Index = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20">
       <div className="container mx-auto py-8 px-4">
+        <div className="mb-6 flex justify-end">
+          <UserAccountMenu />
+        </div>
+
         {/* Hero Header */}
         <div className="relative mb-12 text-center">
           <div className="absolute inset-0 gradient-primary opacity-5 rounded-3xl blur-3xl"></div>

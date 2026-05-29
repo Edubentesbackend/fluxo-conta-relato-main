@@ -35,16 +35,35 @@ model User {
   id           String         @id @default(uuid()) @db.Uuid
   email        String         @unique
   name         String
-  passwordHash String         @map("password_hash")
+  passwordHash String?        @map("password_hash")
   role         UserRole       @default(viewer)
   isActive     Boolean        @default(true) @map("is_active")
   createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  credentials  UserCredential[]
   refreshTokens RefreshToken[]
   auditLogs    AuditLog[]
   transactions Transaction[]
 
   @@map("users")
+}
+
+model UserCredential {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  credentialType String   @map("credential_type")
+  secretHash     String   @map("secret_hash")
+  hashAlgorithm  String   @map("hash_algorithm")
+  hashParams     Json?    @map("hash_params")
+  pepperVersion  String   @default("v1") @map("pepper_version")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, credentialType])
+  @@index([credentialType])
+  @@index([userId])
+  @@map("user_credentials")
 }
 
 model RefreshToken {
@@ -62,16 +81,30 @@ model RefreshToken {
 }
 
 model Account {
-  id                  String        @id @default(uuid()) @db.Uuid
-  name                String        @unique
-  accountNumber       String?       @unique @map("account_number")
-  description         String?
-  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sourceTransactions  Transaction[] @relation("SourceAccount")
+  id                      String              @id @default(uuid()) @db.Uuid
+  name                    String              @unique
+  accountNumber           String?             @unique @map("account_number")
+  description             String?
+  coordinatorId           String?             @map("coordinator_id") @db.Uuid
+  createdAt               DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  coordinator             ProjectCoordinator? @relation(fields: [coordinatorId], references: [id], onDelete: SetNull)
+  sourceTransactions      Transaction[]       @relation("SourceAccount")
   destinationTransactions Transaction[] @relation("DestinationAccount")
 
+  @@index([coordinatorId])
   @@map("accounts")
+}
+
+model ProjectCoordinator {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  normalizedName String    @unique @map("normalized_name")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  accounts       Account[]
+
+  @@map("project_coordinators")
 }
 
 model Transaction {

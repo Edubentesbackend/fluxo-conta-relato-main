@@ -1,8 +1,8 @@
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, PieChart, TrendingDown, Shield, AlertCircle } from "lucide-react";
-import { ActivityChart } from "../../reports/Dashboard/ActivityChart";
-import { AdvancedMetrics } from "../../reports/Dashboard/AdvancedMetrics";
+import { ActivityChart } from "../../reports/dashboard/ActivityChart";
+import { AdvancedMetrics } from "../../reports/dashboard/AdvancedMetrics";
 import { TransactionInsights, MonthlyVolume } from "@/hooks/useReportsData";
 import { formatCurrency } from "@/utils/currency";
 

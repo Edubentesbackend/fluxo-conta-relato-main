@@ -10,7 +10,7 @@ import { formatCurrency } from '@/utils/currency';
 import { DistributionPieChart } from './charts/DistributionPieChart';
 import { ComparisonBarChart } from './charts/ComparisonBarChart';
 import { BalanceTimelineChart } from './charts/BalanceTimelineChart';
-import { exportDetailedAccountReport, exportDetailedAccountReportToPDF } from './breakdown/DetailedExportHelpers';
+import { exportDetailedAccountReport, exportDetailedAccountReportToPDF } from './export/DetailedExportHelpers';
 import { useToast } from '@/hooks/use-toast';
 
 interface VisualAccountReportProps {

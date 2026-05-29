@@ -5,7 +5,10 @@ import { buildTransactionWhere, type TransactionFilters } from "./transaction-se
 export async function getTransactionInsights(filters: TransactionFilters = {}) {
   const transactions = await prisma.transaction.findMany({
     where: buildTransactionWhere(filters),
-    include: { sourceAccount: true, destinationAccount: true },
+    include: {
+      sourceAccount: { include: { coordinator: true } },
+      destinationAccount: { include: { coordinator: true } },
+    },
   });
 
   const totalVolume = transactions.reduce((sum, item) => sum + Math.abs(Number(item.amount)), 0);
@@ -76,7 +79,7 @@ export async function getMonthlyVolumes(filters: TransactionFilters = {}, months
 
 export async function getAccountSummaries(filters: TransactionFilters = {}) {
   const [accounts, transactions] = await Promise.all([
-    prisma.account.findMany({ orderBy: { name: "asc" } }),
+    prisma.account.findMany({ include: { coordinator: true }, orderBy: { name: "asc" } }),
     prisma.transaction.findMany({ where: buildTransactionWhere(filters) }),
   ]);
 
@@ -107,11 +110,14 @@ export async function getAccountSummaries(filters: TransactionFilters = {}) {
 
 export async function getAccountBreakdown(accountId: string, filters: TransactionFilters = {}) {
   const [account, accounts, transactions] = await Promise.all([
-    prisma.account.findUnique({ where: { id: accountId } }),
-    prisma.account.findMany({ orderBy: { name: "asc" } }),
+    prisma.account.findUnique({ where: { id: accountId }, include: { coordinator: true } }),
+    prisma.account.findMany({ include: { coordinator: true }, orderBy: { name: "asc" } }),
     prisma.transaction.findMany({
       where: buildTransactionWhere({ ...filters, accountId }),
-      include: { sourceAccount: true, destinationAccount: true },
+      include: {
+        sourceAccount: { include: { coordinator: true } },
+        destinationAccount: { include: { coordinator: true } },
+      },
       orderBy: { transactionDate: "asc" },
     }),
   ]);
@@ -205,11 +211,14 @@ export async function getReturnsReport(filters: TransactionFilters = {}) {
       status: { in: ["pending_return", "partially_returned", "fully_returned"] },
     },
     include: {
-      sourceAccount: true,
-      destinationAccount: true,
+      sourceAccount: { include: { coordinator: true } },
+      destinationAccount: { include: { coordinator: true } },
       returns: {
         where: { transactionType: "devolucao" },
-        include: { sourceAccount: true, destinationAccount: true },
+        include: {
+          sourceAccount: { include: { coordinator: true } },
+          destinationAccount: { include: { coordinator: true } },
+        },
         orderBy: { transactionDate: "asc" },
       },
     },

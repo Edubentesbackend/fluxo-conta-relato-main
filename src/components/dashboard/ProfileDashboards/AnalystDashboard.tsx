@@ -1,9 +1,9 @@
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Database, FileBarChart, Filter, Table2 } from "lucide-react";
-import { InteractiveTable } from "../../reports/Tables/InteractiveTable";
-import { AdvancedMetrics } from "../../reports/Dashboard/AdvancedMetrics";
-import { ActivityChart } from "../../reports/Dashboard/ActivityChart";
+import { InteractiveTable } from "../../reports/tables/InteractiveTable";
+import { AdvancedMetrics } from "../../reports/dashboard/AdvancedMetrics";
+import { ActivityChart } from "../../reports/dashboard/ActivityChart";
 import { TransactionInsights, MonthlyVolume } from "@/hooks/useReportsData";
 import { TransactionWithAccounts } from "@/hooks/useTransactions";
 import { formatCurrency } from "@/utils/currency";

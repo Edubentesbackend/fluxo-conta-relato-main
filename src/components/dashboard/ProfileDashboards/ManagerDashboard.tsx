@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, CheckCircle2, Clock, Users } from "lucide-react";
 import { ActivityFeed } from "../ActivityFeed";
-import { ActivityChart } from "../../reports/Dashboard/ActivityChart";
+import { ActivityChart } from "../../reports/dashboard/ActivityChart";
 import { TransactionInsights, MonthlyVolume } from "@/hooks/useReportsData";
 import { TransactionWithAccounts } from "@/hooks/useTransactions";
 import { Progress } from "@/components/ui/progress";

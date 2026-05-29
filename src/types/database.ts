@@ -3,8 +3,17 @@ export interface Account {
   name: string;
   description?: string;
   account_number?: string;
+  coordinator_id?: string | null;
+  coordinator_name?: string | null;
+  coordinator?: ProjectCoordinator | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProjectCoordinator {
+  id: string;
+  name: string;
+  normalized_name?: string;
 }
 
 export type TransactionStatus = 

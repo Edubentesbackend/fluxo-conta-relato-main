@@ -1,6 +1,6 @@
-import "dotenv/config";
-import bcrypt from "bcryptjs";
+import "../src/load-env.js";
 import { PrismaClient } from "@prisma/client";
+import { buildPasswordCredential } from "../src/services/password-service.js";
 
 const prisma = new PrismaClient();
 
@@ -9,22 +9,39 @@ async function main() {
   const password = process.env.ADMIN_PASSWORD || "admin12345";
   const name = process.env.ADMIN_NAME || "Administrador";
 
-  const passwordHash = await bcrypt.hash(password, 12);
+  const passwordCredential = await buildPasswordCredential(password);
 
-  await prisma.user.upsert({
+  const user = await prisma.user.upsert({
     where: { email },
     update: {
       name,
-      passwordHash,
       role: "admin",
       isActive: true,
     },
     create: {
       email,
       name,
-      passwordHash,
       role: "admin",
       isActive: true,
+    },
+  });
+
+  await prisma.userCredential.upsert({
+    where: {
+      userId_credentialType: {
+        userId: user.id,
+        credentialType: passwordCredential.credentialType,
+      },
+    },
+    update: {
+      secretHash: passwordCredential.secretHash,
+      hashAlgorithm: passwordCredential.hashAlgorithm,
+      hashParams: passwordCredential.hashParams,
+      pepperVersion: passwordCredential.pepperVersion,
+    },
+    create: {
+      userId: user.id,
+      ...passwordCredential,
     },
   });
 

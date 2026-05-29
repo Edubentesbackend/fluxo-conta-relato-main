@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
+import { statusApi } from "@/lib/apiClient"
 
 interface APIService {
   id: string
@@ -46,7 +47,7 @@ const mockServices: APIService[] = [
     responseTime: 45,
     uptime: 99.8,
     lastCheck: new Date(),
-    description: "Conexão principal Supabase",
+    description: "Conexao principal PostgreSQL",
     icon: Database
   },
   {
@@ -104,24 +105,46 @@ interface APIStatusMonitorProps {
 
 export function APIStatusMonitor({ className }: APIStatusMonitorProps) {
   const [services, setServices] = React.useState<APIService[]>(mockServices)
-  const [webhooks, setWebhooks] = React.useState<WebhookActivity[]>(mockWebhooks)
+  const [webhooks] = React.useState<WebhookActivity[]>([])
   const [isRefreshing, setIsRefreshing] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState<"services" | "webhooks">("services")
 
+  const loadStatus = React.useCallback(async () => {
+    const data = await statusApi.integrations<{
+      services: Array<{
+        id: string
+        name: string
+        status: "online" | "warning" | "offline"
+        responseTime: number
+        description: string
+      }>
+    }>()
+
+    setServices(data.services.map(service => ({
+      ...service,
+      uptime: service.status === "online" ? 99.9 : 0,
+      lastCheck: new Date(),
+      icon: service.id === "database" ? Database : service.id === "auth" ? CheckCircle : Cloud
+    })))
+  }, [])
+
+  React.useEffect(() => {
+    loadStatus().catch(() => {
+      setServices(prev => prev.map(service => ({
+        ...service,
+        status: service.id === "database" ? "offline" : service.status,
+        lastCheck: new Date()
+      })))
+    })
+  }, [loadStatus])
+
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    // Update timestamps
-    setServices(prev => prev.map(service => ({
-      ...service,
-      lastCheck: new Date(),
-      responseTime: Math.floor(Math.random() * 100) + 20
-    })))
-    
-    setIsRefreshing(false)
+    try {
+      await loadStatus()
+    } finally {
+      setIsRefreshing(false)
+    }
   }
 
   const getStatusColor = (status: APIService["status"]) => {

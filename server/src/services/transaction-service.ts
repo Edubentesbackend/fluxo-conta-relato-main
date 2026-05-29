@@ -2,16 +2,10 @@ import { Prisma, type TransactionType } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { badRequest, notFound } from "../utils/errors.js";
 import { serializeTransaction } from "../utils/serialize.js";
+import { getLoanStatus, validateBasicTransactionRules } from "./transaction-rules.js";
+import type { TransactionFilters } from "../types.js";
 
-export interface TransactionFilters {
-  startDate?: string;
-  endDate?: string;
-  transactionType?: TransactionType;
-  accountId?: string;
-  minAmount?: number;
-  maxAmount?: number;
-  description?: string;
-}
+export type { TransactionFilters };
 
 export interface CreateTransactionInput {
   source_account_id: string;
@@ -94,12 +88,7 @@ async function updateLoanStatus(tx: Prisma.TransactionClient, loanId: string) {
 
   const returnedAmount = Number(aggregate._sum.amount || 0);
   const loanAmount = Number(loan.amount);
-  const status =
-    returnedAmount >= loanAmount
-      ? "fully_returned"
-      : returnedAmount > 0
-        ? "partially_returned"
-        : "pending_return";
+  const status = getLoanStatus(loanAmount, returnedAmount);
 
   await tx.transaction.update({
     where: { id: loanId },
@@ -111,8 +100,8 @@ export async function listTransactions(filters: TransactionFilters = {}) {
   const transactions = await prisma.transaction.findMany({
     where: buildTransactionWhere(filters),
     include: {
-      sourceAccount: true,
-      destinationAccount: true,
+      sourceAccount: { include: { coordinator: true } },
+      destinationAccount: { include: { coordinator: true } },
     },
     orderBy: { transactionDate: "desc" },
   });
@@ -122,15 +111,12 @@ export async function listTransactions(filters: TransactionFilters = {}) {
 
 export async function createTransaction(input: CreateTransactionInput, createdById?: string) {
   const transactionDate = new Date(input.transaction_date);
-  if (Number.isNaN(transactionDate.getTime())) {
-    throw badRequest("Data da transacao invalida");
-  }
-  if (transactionDate.getTime() > Date.now() + 60_000) {
-    throw badRequest("A data da transacao nao pode ser futura");
-  }
-  if (input.amount <= 0) {
-    throw badRequest("Valor deve ser maior que zero");
-  }
+  validateBasicTransactionRules({
+    sourceAccountId: input.source_account_id,
+    destinationAccountId: input.destination_account_id,
+    transactionDate,
+    amount: input.amount,
+  });
 
   return prisma.$transaction(async (tx) => {
     await assertAccountsExist(tx, input.source_account_id, input.destination_account_id);
@@ -188,8 +174,8 @@ export async function createTransaction(input: CreateTransactionInput, createdBy
         createdById,
       },
       include: {
-        sourceAccount: true,
-        destinationAccount: true,
+        sourceAccount: { include: { coordinator: true } },
+        destinationAccount: { include: { coordinator: true } },
       },
     });
 

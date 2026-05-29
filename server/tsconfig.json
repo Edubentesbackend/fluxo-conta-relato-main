@@ -10,9 +10,9 @@
     "noEmit": false,
     "allowImportingTsExtensions": false,
     "types": ["node"],
-    "baseUrl": "..",
+    "baseUrl": ".",
     "paths": {
-      "@server/*": ["server/src/*"]
+      "@server/*": ["src/*"]
     }
   },
   "include": ["src/**/*.ts", "prisma/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
