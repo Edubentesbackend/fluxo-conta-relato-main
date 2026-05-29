@@ -9,6 +9,7 @@ import {
   Save,
   Trash2,
   UserRound,
+  UserPlus,
   XCircle,
   ClipboardPaste,
   FileSpreadsheet,
@@ -23,12 +24,26 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { accountsApi } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
+import type { AccountType } from '@/types/database';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+const ACCOUNT_TYPES: { value: AccountType; label: string; color: string }[] = [
+  { value: 'projeto', label: 'Projeto', color: 'bg-primary/10 text-primary border-primary/20' },
+  { value: 'adm', label: 'ADM', color: 'bg-warning/10 text-warning border-warning/20' },
+  { value: 'transitoria', label: 'Transitória', color: 'bg-muted text-muted-foreground border-border' },
+];
 
 interface AccountData {
   local_id: string;
@@ -36,6 +51,7 @@ interface AccountData {
   name: string;
   coordinator_name: string;
   description?: string;
+  account_type: AccountType;
 }
 
 interface ProjectCoordinatorOption {
@@ -54,19 +70,20 @@ interface ImportAccountsResponse {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const coordinatorNamePattern = /^[\p{L}\s]+$/u;
+const NO_COORDINATOR_VALUE = '__none__';
 
 function newLocalId() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 }
 
 function emptyAccount(): AccountData {
-  return { local_id: newLocalId(), account_number: '', name: '', coordinator_name: '', description: '' };
+  return { local_id: newLocalId(), account_number: '', name: '', coordinator_name: '', description: '', account_type: 'projeto' };
 }
 
 function formatAccountNumber(value: string) {
-  const digits = value.replace(/\D/g, '');
-  if (digits.length <= 1) return digits;
-  return `${digits.slice(0, -1)}-${digits.slice(-1)}`;
+  const compact = value.replace(/[^\dXx]/g, '').toUpperCase();
+  if (compact.length <= 1) return compact;
+  return `${compact.slice(0, -1)}-${compact.slice(-1)}`;
 }
 
 function normalizeCoordinatorLookup(value: string) {
@@ -84,7 +101,7 @@ function sanitizeCoordinatorName(value: string) {
 }
 
 function isValidAccountNumber(value: string) {
-  return /^\d+-\d$/.test(value.trim());
+  return /^\d+-[\dX]$/i.test(value.trim());
 }
 
 function isValidCoordinatorName(value: string) {
@@ -129,6 +146,8 @@ export const AccountImport: React.FC = () => {
   const [pastedText, setPastedText] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [newCoordinatorName, setNewCoordinatorName] = useState('');
+  const [isCreatingCoordinator, setIsCreatingCoordinator] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
@@ -150,10 +169,15 @@ export const AccountImport: React.FC = () => {
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }, [accounts, projectCoordinators]);
 
+  const coordinatorExists = (name: string) => {
+    const normalized = normalizeCoordinatorLookup(name);
+    return projectCoordinators.some((coordinator) => coordinator.normalized_name === normalized);
+  };
+
   const getRowError = (account: AccountData) => {
-    if (!isValidAccountNumber(account.account_number)) return 'Número inválido (ex: 12671-2)';
+    if (!isValidAccountNumber(account.account_number)) return 'Número inválido (ex: 12671-2 ou 12671-X)';
     if (!account.name.trim()) return 'Nome obrigatório';
-    if (!isValidCoordinatorName(account.coordinator_name)) return 'Coordenador aceita só letras';
+    if (account.coordinator_name.trim() && !isValidCoordinatorName(account.coordinator_name)) return 'Coordenador aceita só letras';
     return '';
   };
 
@@ -169,21 +193,44 @@ export const AccountImport: React.FC = () => {
     }));
   };
 
-  const applyCoordinatorSuggestion = (localId: string) => {
-    setAccounts((cur) => cur.map((a) => {
-      if (a.local_id !== localId) return a;
-      const normalized = normalizeCoordinatorLookup(a.coordinator_name);
-      const suggestion = coordinatorOptions.find((o) => o.normalized === normalized || o.normalized.startsWith(normalized));
-      return { ...a, coordinator_name: suggestion?.name || formatCoordinatorName(a.coordinator_name) };
-    }));
-  };
-
   const addManualAccount = () => setAccounts((cur) => [...cur, emptyAccount()]);
   const removeAccount = (localId: string) => {
     setAccounts((cur) => {
       const next = cur.filter((a) => a.local_id !== localId);
       return next.length > 0 ? next : [emptyAccount()];
     });
+  };
+
+  const handleCreateCoordinator = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const name = formatCoordinatorName(newCoordinatorName);
+
+    if (!name || !coordinatorNamePattern.test(name)) {
+      toast({ title: 'Erro', description: 'Informe um nome de coordenador válido', variant: 'destructive' });
+      return;
+    }
+
+    if (coordinatorExists(name)) {
+      toast({ title: 'Coordenador já cadastrado', description: `${name} já existe na lista`, variant: 'destructive' });
+      return;
+    }
+
+    setIsCreatingCoordinator(true);
+    try {
+      const created = await accountsApi.createCoordinator<ProjectCoordinatorOption>({ name });
+      queryClient.setQueryData<ProjectCoordinatorOption[]>(['project-coordinators'], (current = []) => {
+        if (current.some((coordinator) => coordinator.normalized_name === created.normalized_name)) return current;
+        return [...current, created].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      });
+      await queryClient.invalidateQueries({ queryKey: ['project-coordinators'] });
+      setNewCoordinatorName('');
+      toast({ title: 'Coordenador cadastrado', description: `${created.name} foi adicionado à lista` });
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error.message || 'Erro ao cadastrar coordenador', variant: 'destructive' });
+    } finally {
+      setIsCreatingCoordinator(false);
+    }
   };
 
   const parseRows = (rows: unknown[][]) => {
@@ -194,8 +241,10 @@ export const AccountImport: React.FC = () => {
       const name = String(row[1] ?? '').trim();
       const coordinatorName = sanitizeCoordinatorName(String(row[2] ?? '').trim());
       const description = String(row[3] ?? '').trim();
+      const rawType = String(row[4] ?? '').trim().toLocaleLowerCase('pt-BR');
+      const account_type: AccountType = rawType === 'adm' ? 'adm' : rawType === 'transitoria' || rawType === 'transitória' ? 'transitoria' : 'projeto';
       if (!accountNumber && !name && !coordinatorName && !description) return [];
-      return [{ account_number: accountNumber, name, coordinator_name: coordinatorName, description }];
+      return [{ account_number: accountNumber, name, coordinator_name: coordinatorName, description, account_type }];
     });
   };
 
@@ -245,8 +294,9 @@ export const AccountImport: React.FC = () => {
         accounts: accounts.map((a) => ({
           account_number: a.account_number,
           name: a.name.trim(),
-          coordinator_name: formatCoordinatorName(a.coordinator_name),
+          coordinator_name: a.coordinator_name.trim() ? formatCoordinatorName(a.coordinator_name) : null,
           description: a.description?.trim() || null,
+          account_type: a.account_type,
         })),
       });
 
@@ -285,10 +335,6 @@ export const AccountImport: React.FC = () => {
       <CardContent className="p-7">
         <StepBar current={step} />
 
-        <datalist id="coordinator-suggestions">
-          {coordinatorOptions.map((o) => <option key={o.normalized} value={o.name} />)}
-        </datalist>
-
         <AnimatePresence mode="wait" custom={step}>
           <motion.div
             key={step}
@@ -325,7 +371,7 @@ export const AccountImport: React.FC = () => {
                     {isDragOver ? 'Solte o arquivo aqui' : 'Arraste o arquivo ou clique para selecionar'}
                   </p>
                   <p className="text-sm text-muted-foreground mb-3">
-                    Planilha com: número da conta, nome, coordenador e descrição (opcional)
+                    Planilha com: número da conta, nome, coordenador opcional e descrição opcional
                   </p>
                   <div className="flex justify-center gap-2">
                     <Badge variant="secondary" className="text-xs"><FileSpreadsheet className="h-3 w-3 mr-1" />XLSX</Badge>
@@ -350,7 +396,7 @@ export const AccountImport: React.FC = () => {
                   <Textarea
                     value={pastedText}
                     onChange={(e) => setPastedText(e.target.value)}
-                    placeholder={'126712\tTC N 026/2023 - Projeto\tMarcus Lacerda\n300012\tTC N 017/2023 - Projeto\tAna Silva'}
+                    placeholder={'12671x\tTC N 026/2023 - Projeto\tMarcus Lacerda\n300012\tTC N 017/2023 - Projeto'}
                     className="min-h-28 rounded-xl text-sm font-mono"
                   />
                 </div>
@@ -382,7 +428,7 @@ export const AccountImport: React.FC = () => {
                 {/* Summary badges */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm text-muted-foreground">Revise e corrija os dados antes de importar.</p>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Badge variant="secondary" className="bg-success/10 text-success border-success/20 gap-1">
                       <CheckCircle2 className="h-3 w-3" /> {validRows.length} válidas
                     </Badge>
@@ -393,6 +439,33 @@ export const AccountImport: React.FC = () => {
                     )}
                   </div>
                 </div>
+
+                <form
+                  className="rounded-xl border border-border bg-secondary/20 p-4"
+                  onSubmit={handleCreateCoordinator}
+                >
+                  <Label htmlFor="new-coordinator-name" className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+                    <UserPlus className="h-4 w-4 text-accent" />
+                    Cadastrar novo coordenador
+                  </Label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      id="new-coordinator-name"
+                      value={newCoordinatorName}
+                      onChange={(e) => setNewCoordinatorName(sanitizeCoordinatorName(e.target.value))}
+                      placeholder="Nome do coordenador"
+                      className="h-10 rounded-lg"
+                    />
+                    <Button
+                      type="submit"
+                      disabled={isCreatingCoordinator || !newCoordinatorName.trim()}
+                      className="h-10 rounded-lg gap-2 sm:w-48"
+                    >
+                      {isCreatingCoordinator ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      Salvar coordenador
+                    </Button>
+                  </div>
+                </form>
 
                 {/* Account rows */}
                 <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
@@ -434,16 +507,16 @@ export const AccountImport: React.FC = () => {
                           </Button>
                         </div>
 
-                        <div className="grid gap-3 lg:grid-cols-[140px_1fr_1fr]">
+                        <div className="grid gap-3 lg:grid-cols-[140px_1fr_1fr_120px]">
                           <div>
                             <Label className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
                               <Hash className="h-3 w-3" /> Número
                             </Label>
                             <Input
-                              inputMode="numeric"
+                              inputMode="text"
                               value={account.account_number}
                               onChange={(e) => updateAccount(account.local_id, 'account_number', e.target.value)}
-                              placeholder="126712"
+                              placeholder="12671-X"
                               className="h-9 rounded-lg text-sm border"
                             />
                           </div>
@@ -458,16 +531,46 @@ export const AccountImport: React.FC = () => {
                           </div>
                           <div>
                             <Label className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
-                              <UserRound className="h-3 w-3" /> Coordenador
+                              <UserRound className="h-3 w-3" /> Coordenador (opcional)
                             </Label>
-                            <Input
-                              list="coordinator-suggestions"
-                              value={account.coordinator_name}
-                              onChange={(e) => updateAccount(account.local_id, 'coordinator_name', e.target.value)}
-                              onBlur={() => applyCoordinatorSuggestion(account.local_id)}
-                              placeholder="Marcus Lacerda"
-                              className="h-9 rounded-lg text-sm border"
-                            />
+                            <Select
+                              value={account.coordinator_name.trim() ? formatCoordinatorName(account.coordinator_name) : NO_COORDINATOR_VALUE}
+                              onValueChange={(value) => updateAccount(
+                                account.local_id,
+                                'coordinator_name',
+                                value === NO_COORDINATOR_VALUE ? '' : value,
+                              )}
+                            >
+                              <SelectTrigger className="h-9 rounded-lg text-sm border">
+                                <SelectValue placeholder="Sem coordenador" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NO_COORDINATOR_VALUE}>Sem coordenador</SelectItem>
+                                {coordinatorOptions.map((option) => (
+                                  <SelectItem key={option.normalized} value={option.name}>
+                                    {option.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground mb-1 block">Tipo</Label>
+                            <Select
+                              value={account.account_type}
+                              onValueChange={(value) => setAccounts((cur) => cur.map((a) =>
+                                a.local_id === account.local_id ? { ...a, account_type: value as AccountType } : a
+                              ))}
+                            >
+                              <SelectTrigger className="h-9 rounded-lg text-sm border">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ACCOUNT_TYPES.map((t) => (
+                                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
                         <div className="mt-2">

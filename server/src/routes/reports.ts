@@ -4,6 +4,7 @@ import type { TransactionType } from "@prisma/client";
 import {
   getAccountBreakdown,
   getAccountSummaries,
+  getAdmPosition,
   getMonthlyVolumes,
   getReturnsReport,
   getTransactionInsights,
@@ -28,6 +29,7 @@ const filtersSchema = z.object({
   minAmount: z.coerce.number().positive().optional(),
   maxAmount: z.coerce.number().positive().optional(),
   description: z.string().optional(),
+  flow_scope: z.enum(["all", "adm", "between_projects"]).optional(),
 });
 
 function parseFilters(query: unknown): TransactionFilters {
@@ -66,5 +68,9 @@ export async function reportRoutes(app: FastifyInstance) {
 
   app.get("/returns", async (request) => {
     return getReturnsReport(parseFilters(request.query));
+  });
+
+  app.get("/adm-position", async (request) => {
+    return getAdmPosition(parseFilters(request.query));
   });
 }

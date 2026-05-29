@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { positionFromBalance, serializeAccount, serializeTransaction } from "../utils/serialize.js";
 import { buildTransactionWhere, type TransactionFilters } from "./transaction-service.js";
+import type { AccountType } from "@prisma/client";
 
 export async function getTransactionInsights(filters: TransactionFilters = {}) {
   const transactions = await prisma.transaction.findMany({
@@ -200,6 +201,88 @@ export async function getAccountBreakdown(accountId: string, filters: Transactio
           ["pending_return", "partially_returned"].includes(transaction.status),
       )
       .reduce((sum, transaction) => sum + Number(transaction.amount), 0),
+  };
+}
+
+export async function getAdmPosition(filters: TransactionFilters = {}) {
+  const loans = await prisma.transaction.findMany({
+    where: {
+      ...buildTransactionWhere(filters),
+      transactionType: "emprestimo",
+      status: { in: ["pending_return", "partially_returned"] },
+      AND: [
+        {
+          OR: [
+            { sourceAccount: { accountType: "adm" } },
+            { destinationAccount: { accountType: "adm" } },
+          ],
+        },
+        { NOT: { sourceAccount: { accountType: "transitoria" } } },
+        { NOT: { destinationAccount: { accountType: "transitoria" } } },
+      ],
+    },
+    include: {
+      sourceAccount: { include: { coordinator: true } },
+      destinationAccount: { include: { coordinator: true } },
+      returns: { where: { transactionType: "devolucao" } },
+    },
+    orderBy: { transactionDate: "asc" },
+  });
+
+  const byProject = new Map<string, {
+    account: ReturnType<typeof serializeAccount>;
+    borrowed: number;
+    returned: number;
+    oldest_date: string;
+    transactions: ReturnType<typeof serializeTransaction>[];
+  }>();
+
+  for (const loan of loans) {
+    const srcType = loan.sourceAccount.accountType as AccountType;
+    const dstType = loan.destinationAccount.accountType as AccountType;
+
+    // The project account is the non-ADM side
+    const projectAccount = srcType === "projeto" ? loan.sourceAccount : loan.destinationAccount;
+
+    const loanAmount = Number(loan.amount);
+    const returnedAmount = loan.returns.reduce((sum, r) => sum + Number(r.amount), 0);
+
+    const existing = byProject.get(projectAccount.id);
+    if (existing) {
+      existing.borrowed += loanAmount;
+      existing.returned += returnedAmount;
+      existing.transactions.push(serializeTransaction(loan));
+      if (loan.transactionDate.toISOString() < existing.oldest_date) {
+        existing.oldest_date = loan.transactionDate.toISOString();
+      }
+    } else {
+      byProject.set(projectAccount.id, {
+        account: serializeAccount(projectAccount),
+        borrowed: loanAmount,
+        returned: returnedAmount,
+        oldest_date: loan.transactionDate.toISOString(),
+        transactions: [serializeTransaction(loan)],
+      });
+    }
+  }
+
+  const projects = [...byProject.values()]
+    .map((p) => ({ ...p, pending: p.borrowed - p.returned }))
+    .filter((p) => p.pending > 0)
+    .sort((a, b) => b.pending - a.pending);
+
+  const total_adm_debt = projects.reduce((sum, p) => sum + p.pending, 0);
+
+  const oldest = projects.reduce<string | null>((acc, p) => {
+    if (!acc) return p.oldest_date;
+    return p.oldest_date < acc ? p.oldest_date : acc;
+  }, null);
+
+  return {
+    total_adm_debt,
+    creditor_projects_count: projects.length,
+    oldest_loan_date: oldest,
+    by_project: projects,
   };
 }
 

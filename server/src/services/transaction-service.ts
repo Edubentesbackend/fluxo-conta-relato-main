@@ -27,12 +27,34 @@ export function buildTransactionWhere(filters: TransactionFilters = {}): Prisma.
   }
 
   if (filters.transactionType) where.transactionType = filters.transactionType;
+
+  const andClauses: Prisma.TransactionWhereInput[] = [];
+
   if (filters.accountId) {
-    where.OR = [
-      { sourceAccountId: filters.accountId },
-      { destinationAccountId: filters.accountId },
-    ];
+    andClauses.push({
+      OR: [
+        { sourceAccountId: filters.accountId },
+        { destinationAccountId: filters.accountId },
+      ],
+    });
   }
+
+  if (filters.flow_scope === "adm") {
+    andClauses.push({
+      OR: [
+        { sourceAccount: { accountType: "adm" } },
+        { destinationAccount: { accountType: "adm" } },
+      ],
+    });
+  } else if (filters.flow_scope === "between_projects") {
+    andClauses.push({ sourceAccount: { accountType: "projeto" } });
+    andClauses.push({ destinationAccount: { accountType: "projeto" } });
+  }
+
+  if (andClauses.length > 0) {
+    where.AND = andClauses;
+  }
+
   if (filters.minAmount !== undefined || filters.maxAmount !== undefined) {
     where.amount = {};
     if (filters.minAmount !== undefined) where.amount.gte = new Prisma.Decimal(filters.minAmount);

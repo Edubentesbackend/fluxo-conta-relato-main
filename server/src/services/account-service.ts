@@ -1,24 +1,27 @@
 import { prisma } from "../lib/prisma.js";
 import { serializeAccount } from "../utils/serialize.js";
 import type { AuthUser } from "../types.js";
+import { conflict } from "../utils/errors.js";
 import {
   normalizeAccountNumber,
   normalizeCoordinatorName,
 } from "./account-normalization.js";
-import type { Prisma } from "@prisma/client";
+import type { AccountType, Prisma } from "@prisma/client";
 
 export interface CreateAccountInput {
   name: string;
   account_number: string;
-  coordinator_name: string;
+  coordinator_name?: string | null;
   description?: string | null;
+  account_type?: AccountType | null;
 }
 
 export interface ImportAccountInput {
   account_number: string;
   name: string;
-  coordinator_name: string;
+  coordinator_name?: string | null;
   description?: string | null;
+  account_type?: AccountType | null;
 }
 
 export interface ImportAccountsInput {
@@ -26,8 +29,29 @@ export interface ImportAccountsInput {
   accounts: ImportAccountInput[];
 }
 
-async function findOrCreateCoordinator(tx: Prisma.TransactionClient, coordinatorName: string) {
-  const coordinator = normalizeCoordinatorName(coordinatorName);
+type ProjectCoordinatorLike = {
+  id: string;
+  name: string;
+  normalizedName: string;
+};
+
+function serializeProjectCoordinator(coordinator: ProjectCoordinatorLike) {
+  return {
+    id: coordinator.id,
+    name: coordinator.name,
+    normalized_name: coordinator.normalizedName,
+  };
+}
+
+function normalizeOptionalCoordinatorName(coordinatorName?: string | null) {
+  const value = coordinatorName?.trim();
+  return value ? normalizeCoordinatorName(value) : null;
+}
+
+async function findOrCreateCoordinator(tx: Prisma.TransactionClient, coordinatorName?: string | null) {
+  const coordinator = normalizeOptionalCoordinatorName(coordinatorName);
+
+  if (!coordinator) return null;
 
   return tx.projectCoordinator.upsert({
     where: { normalizedName: coordinator.normalizedName },
@@ -53,12 +77,27 @@ export async function listProjectCoordinators() {
       normalizedName: true,
     },
   }).then((coordinators) =>
-    coordinators.map((coordinator) => ({
-      id: coordinator.id,
-      name: coordinator.name,
-      normalized_name: coordinator.normalizedName,
-    })),
+    coordinators.map(serializeProjectCoordinator),
   );
+}
+
+export async function createProjectCoordinator(name: string) {
+  const coordinator = normalizeCoordinatorName(name);
+  const existing = await prisma.projectCoordinator.findUnique({
+    where: { normalizedName: coordinator.normalizedName },
+    select: { id: true, name: true, normalizedName: true },
+  });
+
+  if (existing) {
+    throw conflict("Coordenador ja cadastrado", "COORDINATOR_ALREADY_EXISTS");
+  }
+
+  const created = await prisma.projectCoordinator.create({
+    data: coordinator,
+    select: { id: true, name: true, normalizedName: true },
+  });
+
+  return serializeProjectCoordinator(created);
 }
 
 export async function createAccount(input: CreateAccountInput) {
@@ -68,8 +107,9 @@ export async function createAccount(input: CreateAccountInput) {
       data: {
         name: input.name.trim(),
         accountNumber: normalizeAccountNumber(input.account_number),
-        coordinatorId: coordinator.id,
+        coordinatorId: coordinator?.id ?? null,
         description: input.description?.trim() || null,
+        accountType: input.account_type ?? "projeto",
       },
       include: { coordinator: true },
     });
@@ -79,7 +119,8 @@ export async function createAccount(input: CreateAccountInput) {
 
 export async function updateAccount(id: string, input: Partial<CreateAccountInput>) {
   return prisma.$transaction(async (tx) => {
-    const coordinator = input.coordinator_name
+    const shouldUpdateCoordinator = Object.prototype.hasOwnProperty.call(input, "coordinator_name");
+    const coordinator = shouldUpdateCoordinator
       ? await findOrCreateCoordinator(tx, input.coordinator_name)
       : undefined;
 
@@ -88,8 +129,9 @@ export async function updateAccount(id: string, input: Partial<CreateAccountInpu
       data: {
         name: input.name?.trim(),
         accountNumber: input.account_number === undefined ? undefined : normalizeAccountNumber(input.account_number),
-        coordinatorId: coordinator?.id,
+        coordinatorId: shouldUpdateCoordinator ? coordinator?.id ?? null : undefined,
         description: input.description === undefined ? undefined : input.description?.trim() || null,
+        accountType: input.account_type ?? undefined,
       },
       include: { coordinator: true },
     });
@@ -101,8 +143,9 @@ export async function importAccounts(input: ImportAccountsInput, user: AuthUser)
   const normalized = input.accounts.map((account) => ({
     accountNumber: normalizeAccountNumber(account.account_number),
     name: account.name.trim(),
-    coordinator: normalizeCoordinatorName(account.coordinator_name),
+    coordinator: normalizeOptionalCoordinatorName(account.coordinator_name),
     description: account.description?.trim() || null,
+    accountType: account.account_type ?? "projeto" as AccountType,
   }));
 
   const existing = await prisma.account.findMany({
@@ -139,18 +182,21 @@ export async function importAccounts(input: ImportAccountsInput, user: AuthUser)
     let importedRows = 0;
 
     for (const account of toCreate) {
-      const coordinator = await tx.projectCoordinator.upsert({
-        where: { normalizedName: account.coordinator.normalizedName },
-        update: {},
-        create: account.coordinator,
-      });
+      const coordinator = account.coordinator
+        ? await tx.projectCoordinator.upsert({
+          where: { normalizedName: account.coordinator.normalizedName },
+          update: {},
+          create: account.coordinator,
+        })
+        : null;
 
       await tx.account.create({
         data: {
           accountNumber: account.accountNumber,
           name: account.name,
           description: account.description,
-          coordinatorId: coordinator.id,
+          coordinatorId: coordinator?.id ?? null,
+          accountType: account.accountType,
         },
       });
       importedRows += 1;

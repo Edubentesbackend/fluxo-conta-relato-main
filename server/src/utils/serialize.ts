@@ -1,4 +1,4 @@
-import type { Account, Transaction } from "@prisma/client";
+import type { Account, AccountType, Transaction } from "@prisma/client";
 
 type CoordinatorLike = {
   id: string;
@@ -8,7 +8,7 @@ type CoordinatorLike = {
 
 type AccountLike = Pick<
   Account,
-  "id" | "name" | "description" | "accountNumber" | "coordinatorId" | "createdAt" | "updatedAt"
+  "id" | "name" | "description" | "accountNumber" | "accountType" | "coordinatorId" | "createdAt" | "updatedAt"
 > & {
   coordinator?: CoordinatorLike | null;
 };
@@ -19,6 +19,7 @@ export function serializeAccount(account: AccountLike) {
     name: account.name,
     description: account.description,
     account_number: account.accountNumber,
+    account_type: account.accountType as AccountType,
     coordinator_id: account.coordinatorId,
     coordinator_name: account.coordinator?.name ?? null,
     coordinator: account.coordinator
@@ -54,9 +55,11 @@ export function serializeTransaction(
     status: transaction.status,
     source_account_name: transaction.sourceAccount?.name,
     source_account_number: transaction.sourceAccount?.accountNumber,
+    source_account_type: transaction.sourceAccount?.accountType ?? null,
     source_account_coordinator_name: transaction.sourceAccount?.coordinator?.name,
     destination_account_name: transaction.destinationAccount?.name,
     destination_account_number: transaction.destinationAccount?.accountNumber,
+    destination_account_type: transaction.destinationAccount?.accountType ?? null,
     destination_account_coordinator_name: transaction.destinationAccount?.coordinator?.name,
   };
 }

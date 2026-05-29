@@ -17,6 +17,7 @@ export interface TransactionFilters {
   minAmount?: number;
   maxAmount?: number;
   description?: string;
+  flow_scope?: "all" | "adm" | "between_projects";
 }
 
 export interface AccountFilters {

@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Lock, LogIn, TrendingUp, BarChart3, Shield, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,19 +16,21 @@ const features = [
 export function LoginPage() {
   const { login } = useAuth();
   const [email, setEmail] = useState("admin@local.dev");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
     setIsSubmitting(true);
+    const password = passwordInputRef.current?.value ?? "";
     try {
-      await login(email, password);
+      await login(email.trim(), password);
     } catch (err: any) {
       setError(err.message || "Credenciais inválidas. Tente novamente.");
     } finally {
+      if (passwordInputRef.current) passwordInputRef.current.value = "";
       setIsSubmitting(false);
     }
   };
@@ -139,9 +141,9 @@ export function LoginPage() {
               <Label htmlFor="password" className="text-sm font-medium">Senha</Label>
               <Input
                 id="password"
+                name="password"
+                ref={passwordInputRef}
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
                 required
                 className="h-11 rounded-xl border-2 focus:border-primary"

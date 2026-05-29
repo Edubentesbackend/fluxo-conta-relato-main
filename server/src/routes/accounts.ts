@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   createAccount,
+  createProjectCoordinator,
   importAccounts,
   listAccounts,
   listProjectCoordinators,
@@ -15,13 +16,26 @@ const coordinatorNameSchema = z.string().trim().min(1).regex(/^[\p{L}\s]+$/u);
 const accountSchema = z.object({
   name: z.string().min(1),
   account_number: z.string().trim().min(2),
-  coordinator_name: coordinatorNameSchema,
+  coordinator_name: z.string().trim().regex(/^[\p{L}\s]*$/u).optional().nullable(),
   description: z.string().optional().nullable(),
+  account_type: z.enum(["projeto", "adm", "transitoria"]).optional().nullable(),
+});
+
+const createCoordinatorSchema = z.object({
+  name: coordinatorNameSchema,
+});
+
+const importAccountItemSchema = z.object({
+  name: z.string().min(1),
+  account_number: z.string().trim().min(2),
+  coordinator_name: z.string().trim().regex(/^[\p{L}\s]*$/u).optional().nullable(),
+  description: z.string().optional().nullable(),
+  account_type: z.enum(["projeto", "adm", "transitoria"]).optional().nullable(),
 });
 
 const importSchema = z.object({
   filename: z.string().optional(),
-  accounts: z.array(accountSchema).min(1),
+  accounts: z.array(importAccountItemSchema).min(1),
 });
 
 export async function accountRoutes(app: FastifyInstance) {
@@ -31,6 +45,12 @@ export async function accountRoutes(app: FastifyInstance) {
 
   app.get("/coordinators", { preHandler: app.authenticate }, async () => {
     return listProjectCoordinators();
+  });
+
+  app.post("/coordinators", { preHandler: app.requireRoles(["manager"]) }, async (request, reply) => {
+    const input = createCoordinatorSchema.parse(request.body);
+    reply.code(201);
+    return createProjectCoordinator(input.name);
   });
 
   app.post("/", { preHandler: app.requireRoles(["manager"]) }, async (request, reply) => {

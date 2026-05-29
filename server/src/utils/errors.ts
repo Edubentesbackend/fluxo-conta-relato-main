@@ -17,5 +17,8 @@ export const unauthorized = (message = "Nao autenticado") =>
 export const forbidden = (message = "Acesso negado") =>
   new ApiError(403, message, "FORBIDDEN");
 
+export const conflict = (message: string, code = "CONFLICT") =>
+  new ApiError(409, message, code);
+
 export const notFound = (message: string) =>
   new ApiError(404, message, "NOT_FOUND");

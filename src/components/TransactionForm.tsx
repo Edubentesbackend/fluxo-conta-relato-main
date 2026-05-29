@@ -221,8 +221,8 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ onSuccess }) =
   const selectedType = TX_TYPES.find((t) => t.value === values.transaction_type);
 
   return (
-    <Card className="w-full max-w-2xl mx-auto border border-border/60 shadow-card rounded-2xl overflow-hidden">
-      <CardContent className="p-7">
+    <Card className="w-full border border-border/60 shadow-card rounded-2xl overflow-hidden">
+      <CardContent className="p-4 sm:p-6 lg:p-8">
         <StepBar current={step} />
 
         <Form {...form}>
@@ -242,7 +242,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ onSuccess }) =
                   <div className="space-y-6">
                     <p className="text-sm text-muted-foreground">Selecione a conta de origem e destino da transação.</p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
+                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_44px_1fr] items-end">
                       <FormField
                         control={form.control}
                         name="source_account_id"
@@ -373,7 +373,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ onSuccess }) =
                           <FormLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                             Tipo de Transação
                           </FormLabel>
-                          <div className="grid grid-cols-4 gap-2">
+                          <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
                             {TX_TYPES.map((type) => {
                               const Icon = type.icon;
                               const active = field.value === type.value;
@@ -383,7 +383,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ onSuccess }) =
                                   key={type.value}
                                   onClick={() => field.onChange(type.value)}
                                   className={cn(
-                                    'flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 text-center transition-all duration-200',
+                                    'flex flex-col items-center gap-1.5 rounded-xl border-2 p-2.5 text-center transition-all duration-200',
                                     active
                                       ? `${type.bg} ${type.color} border-current scale-105 shadow-medium`
                                       : 'border-border hover:border-primary/30 hover:bg-secondary/50',
@@ -403,7 +403,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ onSuccess }) =
                     />
 
                     {/* Data e Descrição */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
                         name="transaction_date"
@@ -457,7 +457,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ onSuccess }) =
                               <div className="relative">
                                 <Textarea
                                   placeholder="Descreva a transação..."
-                                  className="resize-none h-11 rounded-xl border-2 py-2.5 text-sm"
+                                  className="resize-none h-[88px] rounded-xl border-2 py-2.5 text-sm"
                                   maxLength={200}
                                   {...field}
                                 />
@@ -489,24 +489,29 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ onSuccess }) =
                     <p className="text-sm text-muted-foreground">Confira os dados antes de confirmar a transação.</p>
 
                     {/* Card glassmorphism com resumo */}
-                    <div className="glass-card p-5 space-y-4">
-                      {/* DE → PARA */}
-                      <div className="flex items-center gap-2 text-sm">
+                    <div className="glass-card p-4 sm:p-5 space-y-4">
+                      {/* DE → PARA — empilha em mobile, lado a lado em sm+ */}
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center text-sm">
                         <div className="flex-1 rounded-lg bg-primary/8 border border-primary/20 p-3">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">De</p>
-                          <p className="font-semibold text-foreground leading-tight text-sm">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">De (Origem)</p>
+                          <p className="font-semibold text-foreground leading-tight text-sm break-words">
                             {srcAccount?.name ?? '—'}
                           </p>
                           {srcAccount?.account_number && (
                             <p className="text-xs text-muted-foreground">{srcAccount.account_number}</p>
                           )}
                         </div>
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full gradient-hero shadow-sm">
-                          <ArrowRight className="h-3.5 w-3.5 text-white" />
+                        <div className="flex sm:flex-col items-center justify-center gap-1">
+                          <div className="h-px w-8 bg-border sm:h-8 sm:w-px" />
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full gradient-hero shadow-sm">
+                            <ArrowRight className="h-3.5 w-3.5 text-white sm:hidden" />
+                            <ArrowRight className="hidden h-3.5 w-3.5 text-white sm:block rotate-90" />
+                          </div>
+                          <div className="h-px w-8 bg-border sm:h-8 sm:w-px" />
                         </div>
                         <div className="flex-1 rounded-lg bg-accent/8 border border-accent/20 p-3">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Para</p>
-                          <p className="font-semibold text-foreground leading-tight text-sm">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Para (Destino)</p>
+                          <p className="font-semibold text-foreground leading-tight text-sm break-words">
                             {dstAccount?.name ?? '—'}
                           </p>
                           {dstAccount?.account_number && (

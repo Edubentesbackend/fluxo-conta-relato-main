@@ -1,16 +1,21 @@
 import { badRequest } from "../utils/errors.js";
 
 const COORDINATOR_NAME_PATTERN = /^[\p{L}\s]+$/u;
+const ACCOUNT_NUMBER_WITH_DIGIT_PATTERN = /^\d+[\dX]$/;
+const FORMATTED_ACCOUNT_NUMBER_PATTERN = /^\d+-[\dX]$/;
 
 export function normalizeAccountNumber(input: string) {
-  const value = input.trim();
-  const digits = value.replace(/\D/g, "");
+  const value = input.trim().toUpperCase();
+  const compact = value.replace(/-/g, "");
 
-  if (digits.length < 2 || (value !== digits && !/^\d+-\d$/.test(value))) {
-    throw badRequest("Numero da conta deve conter apenas numeros e um digito final");
+  if (
+    !ACCOUNT_NUMBER_WITH_DIGIT_PATTERN.test(compact) ||
+    (value.includes("-") && !FORMATTED_ACCOUNT_NUMBER_PATTERN.test(value))
+  ) {
+    throw badRequest("Numero da conta deve conter numeros e digito final numerico ou X");
   }
 
-  return `${digits.slice(0, -1)}-${digits.slice(-1)}`;
+  return `${compact.slice(0, -1)}-${compact.slice(-1)}`;
 }
 
 export function normalizeCoordinatorSearchName(input: string) {

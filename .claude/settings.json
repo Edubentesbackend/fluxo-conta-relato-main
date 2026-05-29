@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma *)",
+      "Bash(findstr /n \"AccountType\\\\|account_type\\\\|accountType\" \"c:\\\\Users\\\\eduardo.carneiro\\\\OneDrive - Fundacao de Apoio Institucional Muraki\\\\Documentos\\\\Nova pasta\\\\fluxo-conta-relato-main\\\\node_modules\\\\.prisma\\\\client\\\\index.d.ts\")"
+    ]
+  }
+}

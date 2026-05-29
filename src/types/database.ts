@@ -1,8 +1,17 @@
+export type AccountType = 'projeto' | 'adm' | 'transitoria';
+
+export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  projeto: 'Projeto',
+  adm: 'ADM',
+  transitoria: 'Transitória',
+};
+
 export interface Account {
   id: string;
   name: string;
   description?: string;
   account_number?: string;
+  account_type: AccountType;
   coordinator_id?: string | null;
   coordinator_name?: string | null;
   coordinator?: ProjectCoordinator | null;
@@ -76,4 +85,44 @@ export interface CounterpartSummary {
 export interface TransactionWithRunningBalance extends Transaction {
   runningBalance: number;
   balanceChange: 'increase' | 'decrease';
+}
+
+export interface TransactionWithAccounts extends Transaction {
+  source_account_name?: string;
+  source_account_number?: string;
+  source_account_type?: AccountType | null;
+  source_account_coordinator_name?: string;
+  destination_account_name?: string;
+  destination_account_number?: string;
+  destination_account_type?: AccountType | null;
+  destination_account_coordinator_name?: string;
+}
+
+export type FlowScope = 'all' | 'adm' | 'between_projects';
+
+export interface AdmProjectPosition {
+  account: Account;
+  borrowed: number;
+  returned: number;
+  pending: number;
+  oldest_date: string;
+  transactions: TransactionWithAccounts[];
+}
+
+export interface AdmPositionReport {
+  total_adm_debt: number;
+  creditor_projects_count: number;
+  oldest_loan_date: string | null;
+  by_project: AdmProjectPosition[];
+}
+
+export interface TransactionFilters {
+  startDate?: string;
+  endDate?: string;
+  transactionType?: TransactionType;
+  accountId?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  description?: string;
+  flow_scope?: FlowScope;
 }

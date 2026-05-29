@@ -31,6 +31,12 @@ enum TransactionStatus {
   completed
 }
 
+enum AccountType {
+  projeto
+  adm
+  transitoria
+}
+
 model User {
   id           String         @id @default(uuid()) @db.Uuid
   email        String         @unique
@@ -85,6 +91,7 @@ model Account {
   name                    String              @unique
   accountNumber           String?             @unique @map("account_number")
   description             String?
+  accountType             AccountType         @default(projeto) @map("account_type")
   coordinatorId           String?             @map("coordinator_id") @db.Uuid
   createdAt               DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -93,6 +100,7 @@ model Account {
   destinationTransactions Transaction[] @relation("DestinationAccount")
 
   @@index([coordinatorId])
+  @@index([accountType])
   @@map("accounts")
 }
 
