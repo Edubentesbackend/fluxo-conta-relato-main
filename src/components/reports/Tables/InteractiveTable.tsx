@@ -1,13 +1,31 @@
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { formatCurrency } from "@/utils/currency";
-import { ArrowUpDown, ArrowUp, ArrowDown, Search, Settings, Download, Eye, EyeOff } from "lucide-react";
+import {
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Search,
+  Settings,
+  Download,
+  Eye,
+  EyeOff,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Column<T> {
   key: keyof T;
@@ -29,6 +47,30 @@ interface InteractiveTableProps<T> {
 
 type SortDirection = 'asc' | 'desc' | null;
 
+// ─── Loading skeleton ──────────────────────────────────────────────────────────
+
+const TableSkeleton: React.FC<{ cols: number; rows?: number }> = ({ cols, rows = 5 }) => (
+  <div className="space-y-0">
+    {/* Header */}
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-border/60">
+      {Array.from({ length: cols }).map((_, i) => (
+        <div key={i} className="h-3 skeleton flex-1 max-w-[120px]" />
+      ))}
+    </div>
+    {/* Rows */}
+    {Array.from({ length: rows }).map((_, i) => (
+      <div key={i} className={cn('flex items-center gap-3 px-4 py-3.5', i % 2 === 0 ? '' : 'bg-secondary/20')}>
+        <div className="h-4 w-4 skeleton rounded" />
+        {Array.from({ length: cols - 1 }).map((_, j) => (
+          <div key={j} className={cn('h-3 skeleton', j === 0 ? 'flex-1 max-w-[160px]' : 'flex-1 max-w-[100px]')} />
+        ))}
+      </div>
+    ))}
+  </div>
+);
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function InteractiveTable<T extends Record<string, any>>({
   data,
   columns,
@@ -36,167 +78,114 @@ export function InteractiveTable<T extends Record<string, any>>({
   searchable = true,
   selectable = true,
   onExport,
-  isLoading
+  isLoading,
 }: InteractiveTableProps<T>) {
   const [search, setSearch] = useState('');
   const [sortColumn, setSortColumn] = useState<keyof T | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
-  const [visibleColumns, setVisibleColumns] = useState<Set<keyof T>>(
-    new Set(columns.map(col => col.key))
-  );
+  const [visibleColumns, setVisibleColumns] = useState<Set<keyof T>>(new Set(columns.map((c) => c.key)));
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(0);
 
-  // Filter data based on search
+  // Filter
   const filteredData = search
-    ? data.filter(item =>
-        Object.values(item).some(value =>
-          String(value).toLowerCase().includes(search.toLowerCase())
-        )
+    ? data.filter((item) =>
+        Object.values(item).some((v) => String(v).toLowerCase().includes(search.toLowerCase()))
       )
     : data;
 
-  // Sort data
+  // Sort
   const sortedData = sortColumn
     ? [...filteredData].sort((a, b) => {
-        const aValue = a[sortColumn];
-        const bValue = b[sortColumn];
-        
-        if (aValue === bValue) return 0;
-        
-        const result = aValue < bValue ? -1 : 1;
-        return sortDirection === 'desc' ? -result : result;
+        const av = a[sortColumn];
+        const bv = b[sortColumn];
+        if (av === bv) return 0;
+        const r = av < bv ? -1 : 1;
+        return sortDirection === 'desc' ? -r : r;
       })
     : filteredData;
 
-  const handleSort = (column: keyof T) => {
-    if (sortColumn === column) {
-      if (sortDirection === 'asc') {
-        setSortDirection('desc');
-      } else if (sortDirection === 'desc') {
-        setSortColumn(null);
-        setSortDirection(null);
-      } else {
-        setSortDirection('asc');
-      }
+  // Paginate
+  const totalPages = Math.max(1, Math.ceil(sortedData.length / pageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  const pageData = sortedData.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const pageStart = safePage * pageSize + 1;
+  const pageEnd = Math.min((safePage + 1) * pageSize, sortedData.length);
+
+  const handleSort = (col: keyof T) => {
+    if (sortColumn === col) {
+      if (sortDirection === 'asc') setSortDirection('desc');
+      else { setSortColumn(null); setSortDirection(null); }
     } else {
-      setSortColumn(column);
+      setSortColumn(col);
       setSortDirection('asc');
     }
+    setPage(0);
   };
+
+  const handleSearch = (v: string) => { setSearch(v); setPage(0); setSelectedItems(new Set()); };
 
   const toggleSelectAll = () => {
-    if (selectedItems.size === sortedData.length) {
-      setSelectedItems(new Set());
-    } else {
-      setSelectedItems(new Set(sortedData.map((_, index) => index)));
-    }
+    if (selectedItems.size === pageData.length) setSelectedItems(new Set());
+    else setSelectedItems(new Set(pageData.map((_, i) => safePage * pageSize + i)));
   };
 
-  const toggleSelectItem = (index: number) => {
-    const newSelected = new Set(selectedItems);
-    if (newSelected.has(index)) {
-      newSelected.delete(index);
-    } else {
-      newSelected.add(index);
-    }
-    setSelectedItems(newSelected);
-  };
-
-  const toggleColumnVisibility = (column: keyof T) => {
-    const newVisible = new Set(visibleColumns);
-    if (newVisible.has(column)) {
-      newVisible.delete(column);
-    } else {
-      newVisible.add(column);
-    }
-    setVisibleColumns(newVisible);
+  const toggleSelectItem = (globalIndex: number) => {
+    const s = new Set(selectedItems);
+    s.has(globalIndex) ? s.delete(globalIndex) : s.add(globalIndex);
+    setSelectedItems(s);
   };
 
   const handleExport = () => {
-    if (onExport) {
-      const selected = Array.from(selectedItems).map(index => sortedData[index]);
-      onExport(selected.length > 0 ? selected : sortedData);
-    }
+    if (!onExport) return;
+    const selected = Array.from(selectedItems).map((i) => sortedData[i]);
+    onExport(selected.length > 0 ? selected : sortedData);
   };
 
-  const getSortIcon = (column: keyof T) => {
-    if (sortColumn !== column) {
-      return <ArrowUpDown className="h-4 w-4 text-muted-foreground" />;
-    }
-    
-    if (sortDirection === 'asc') {
-      return <ArrowUp className="h-4 w-4 text-primary" />;
-    } else {
-      return <ArrowDown className="h-4 w-4 text-primary" />;
-    }
+  const getSortIcon = (col: keyof T) => {
+    if (sortColumn !== col) return <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />;
+    return sortDirection === 'asc'
+      ? <ArrowUp className="h-3.5 w-3.5 text-primary" />
+      : <ArrowDown className="h-3.5 w-3.5 text-primary" />;
   };
 
-  if (isLoading) {
-    return (
-      <Card>
-        {title && (
-          <CardHeader>
-            <CardTitle>{title}</CardTitle>
-          </CardHeader>
-        )}
-        <CardContent>
-          <div className="space-y-4">
-            <div className="h-10 bg-muted rounded animate-pulse"></div>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-12 bg-muted rounded animate-pulse"></div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const visibleColumnsArray = columns.filter(col => visibleColumns.has(col.key));
+  const visibleCols = columns.filter((c) => visibleColumns.has(c.key));
+  const allOnPageSelected = pageData.length > 0 && pageData.every((_, i) => selectedItems.has(safePage * pageSize + i));
 
   return (
-    <Card>
+    <Card className="border border-border/60 shadow-card overflow-hidden">
+      {/* Header */}
       {title && (
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>{title}</CardTitle>
+        <CardHeader className="border-b border-border/60 pb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="text-base font-semibold">{title}</CardTitle>
             <div className="flex items-center gap-2">
-              {selectable && selectedItems.size > 0 && (
-                <Badge variant="secondary">
-                  {selectedItems.size} selecionados
-                </Badge>
-              )}
-              
               {onExport && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExport}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Exportar
+                <Button variant="outline" size="sm" onClick={handleExport} className="gap-1.5 h-8 text-xs rounded-lg">
+                  <Download className="h-3.5 w-3.5" />
+                  {selectedItems.size > 0 ? `Exportar (${selectedItems.size})` : 'Exportar'}
                 </Button>
               )}
-              
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Settings className="h-4 w-4 mr-2" />
-                    Colunas
+                  <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs rounded-lg">
+                    <Settings className="h-3.5 w-3.5" /> Colunas
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  {columns.map((column) => (
+                <DropdownMenuContent align="end" className="rounded-xl">
+                  {columns.map((col) => (
                     <DropdownMenuItem
-                      key={String(column.key)}
-                      onClick={() => toggleColumnVisibility(column.key)}
-                      className="flex items-center gap-2"
+                      key={String(col.key)}
+                      onClick={() => {
+                        const s = new Set(visibleColumns);
+                        s.has(col.key) ? s.delete(col.key) : s.add(col.key);
+                        setVisibleColumns(s);
+                      }}
+                      className="gap-2 text-xs"
                     >
-                      {visibleColumns.has(column.key) ? (
-                        <Eye className="h-4 w-4" />
-                      ) : (
-                        <EyeOff className="h-4 w-4" />
-                      )}
-                      {column.label}
+                      {visibleColumns.has(col.key) ? <Eye className="h-3.5 w-3.5 text-primary" /> : <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />}
+                      {col.label}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -205,101 +194,175 @@ export function InteractiveTable<T extends Record<string, any>>({
           </div>
         </CardHeader>
       )}
-      
-      <CardContent>
-        {searchable && (
-          <div className="mb-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+
+      <CardContent className="p-0">
+        {/* Search + bulk bar */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60 bg-secondary/20">
+          {searchable && (
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 placeholder="Buscar..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
+                onChange={(e) => handleSearch(e.target.value)}
+                className="pl-8 h-8 text-xs rounded-lg border"
               />
+              {search && (
+                <button onClick={() => handleSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                  <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                </button>
+              )}
             </div>
+          )}
+
+          <AnimatePresence>
+            {selectedItems.size > 0 && (
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                className="flex items-center gap-2"
+              >
+                <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
+                  {selectedItems.size} selecionados
+                </Badge>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedItems(new Set())} className="h-6 w-6 p-0">
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+            {isLoading ? '' : `${sortedData.length} resultado${sortedData.length !== 1 ? 's' : ''}`}
+          </div>
+        </div>
+
+        {/* Table */}
+        {isLoading ? (
+          <TableSkeleton cols={visibleCols.length + (selectable ? 1 : 0)} />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-secondary/30 hover:bg-secondary/30">
+                  {selectable && (
+                    <TableHead className="w-10 pl-4">
+                      <Checkbox
+                        checked={allOnPageSelected}
+                        onCheckedChange={toggleSelectAll}
+                        className="border-muted-foreground/40"
+                      />
+                    </TableHead>
+                  )}
+                  {visibleCols.map((col) => (
+                    <TableHead key={String(col.key)} className={cn('text-xs font-semibold uppercase tracking-wide', col.width)}>
+                      {col.sortable ? (
+                        <button
+                          onClick={() => handleSort(col.key)}
+                          className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                        >
+                          {col.label}
+                          {getSortIcon(col.key)}
+                        </button>
+                      ) : (
+                        col.label
+                      )}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pageData.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={visibleCols.length + (selectable ? 1 : 0)}
+                      className="text-center py-16 text-muted-foreground text-sm"
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <Search className="h-8 w-8 opacity-30" />
+                        <span>Nenhum resultado encontrado</span>
+                        {search && (
+                          <Button variant="ghost" size="sm" onClick={() => handleSearch('')} className="text-xs h-7">
+                            Limpar busca
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  pageData.map((item, rowIdx) => {
+                    const globalIdx = safePage * pageSize + rowIdx;
+                    const isSelected = selectedItems.has(globalIdx);
+                    return (
+                      <TableRow
+                        key={globalIdx}
+                        className={cn(
+                          'transition-colors duration-100',
+                          isSelected ? 'bg-primary/5 hover:bg-primary/8' : 'hover:bg-secondary/30',
+                        )}
+                      >
+                        {selectable && (
+                          <TableCell className="pl-4 w-10">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => toggleSelectItem(globalIdx)}
+                              className="border-muted-foreground/40"
+                            />
+                          </TableCell>
+                        )}
+                        {visibleCols.map((col) => (
+                          <TableCell key={String(col.key)} className="text-sm py-3">
+                            {col.render ? col.render(item[col.key], item) : String(item[col.key] ?? '')}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
           </div>
         )}
-        
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {selectable && (
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={selectedItems.size === sortedData.length && sortedData.length > 0}
-                      onCheckedChange={toggleSelectAll}
-                    />
-                  </TableHead>
-                )}
-                {visibleColumnsArray.map((column) => (
-                  <TableHead
-                    key={String(column.key)}
-                    className={column.width}
-                  >
-                    {column.sortable ? (
-                      <Button
-                        variant="ghost"
-                        className="h-auto p-0 font-semibold hover:bg-transparent"
-                        onClick={() => handleSort(column.key)}
-                      >
-                        {column.label}
-                        {getSortIcon(column.key)}
-                      </Button>
-                    ) : (
-                      column.label
-                    )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedData.length === 0 ? (
-                <TableRow>
-                  <TableCell 
-                    colSpan={visibleColumnsArray.length + (selectable ? 1 : 0)} 
-                    className="text-center py-8 text-muted-foreground"
-                  >
-                    Nenhum resultado encontrado
-                  </TableCell>
-                </TableRow>
-              ) : (
-                sortedData.map((item, index) => (
-                  <TableRow key={index} className="hover:bg-muted/50">
-                    {selectable && (
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedItems.has(index)}
-                          onCheckedChange={() => toggleSelectItem(index)}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleColumnsArray.map((column) => (
-                      <TableCell key={String(column.key)}>
-                        {column.render
-                          ? column.render(item[column.key], item)
-                          : String(item[column.key])
-                        }
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-        
-        {sortedData.length > 0 && (
-          <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
-            <span>
-              Mostrando {sortedData.length} de {data.length} resultados
+
+        {/* Pagination */}
+        {!isLoading && sortedData.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-border/60 bg-secondary/20">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Linhas por página:</span>
+              <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(0); }}>
+                <SelectTrigger className="h-7 w-16 text-xs rounded-lg border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 100].map((n) => (
+                    <SelectItem key={n} value={String(n)} className="text-xs">{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <span className="text-xs text-muted-foreground">
+              {pageStart}–{pageEnd} de {sortedData.length}
             </span>
-            {search && (
-              <span>
-                Filtrado por: "{search}"
+
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="sm" className="h-7 w-7 p-0 rounded-lg" onClick={() => setPage(0)} disabled={safePage === 0}>
+                <ChevronsLeft className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 w-7 p-0 rounded-lg" onClick={() => setPage((p) => p - 1)} disabled={safePage === 0}>
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <span className="text-xs px-2 text-muted-foreground">
+                {safePage + 1}/{totalPages}
               </span>
-            )}
+              <Button variant="outline" size="sm" className="h-7 w-7 p-0 rounded-lg" onClick={() => setPage((p) => p + 1)} disabled={safePage >= totalPages - 1}>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 w-7 p-0 rounded-lg" onClick={() => setPage(totalPages - 1)} disabled={safePage >= totalPages - 1}>
+                <ChevronsRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>

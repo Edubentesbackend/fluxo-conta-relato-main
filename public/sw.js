@@ -1,6 +1,6 @@
-const CACHE_NAME = 'finance-app-v1.0.0'
-const STATIC_CACHE = 'static-v1.0.0'
-const DYNAMIC_CACHE = 'dynamic-v1.0.0'
+const CACHE_NAME = 'finance-app-v1.0.1'
+const STATIC_CACHE = 'static-v1.0.1'
+const DYNAMIC_CACHE = 'dynamic-v1.0.1'
 
 // Assets to cache immediately
 const STATIC_ASSETS = [
@@ -36,7 +36,7 @@ self.addEventListener('activate', event => {
   )
 })
 
-// Fetch event - serve from cache or network
+// Fetch event - use network first to avoid serving stale app shells after deploys.
 self.addEventListener('fetch', event => {
   const { request } = event
   const url = new URL(request.url)
@@ -48,29 +48,22 @@ self.addEventListener('fetch', event => {
   if (url.origin !== location.origin) return
 
   event.respondWith(
-    caches.match(request)
-      .then(cachedResponse => {
-        if (cachedResponse) {
-          return cachedResponse
+    fetch(request)
+      .then(response => {
+        if (response.status === 200) {
+          const responseClone = response.clone()
+          caches.open(DYNAMIC_CACHE)
+            .then(cache => cache.put(request, responseClone))
+            .catch(() => undefined)
         }
-
-        return caches.open(DYNAMIC_CACHE)
-          .then(cache => {
-            return fetch(request)
-              .then(response => {
-                // Cache successful responses
-                if (response.status === 200) {
-                  cache.put(request, response.clone())
-                }
-                return response
-              })
-              .catch(() => {
-                // Return offline fallback for navigation requests
-                if (request.mode === 'navigate') {
-                  return caches.match('/')
-                }
-                throw new Error('Network unavailable')
-              })
+        return response
+      })
+      .catch(() => {
+        return caches.match(request)
+          .then(cachedResponse => {
+            if (cachedResponse) return cachedResponse
+            if (request.mode === 'navigate') return caches.match('/')
+            throw new Error('Network unavailable')
           })
       })
   )

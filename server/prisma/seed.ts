@@ -6,8 +6,12 @@ const prisma = new PrismaClient();
 
 async function main() {
   const email = process.env.ADMIN_EMAIL || "admin@local.dev";
-  const password = process.env.ADMIN_PASSWORD || "admin12345";
+  const password = process.env.ADMIN_PASSWORD;
   const name = process.env.ADMIN_NAME || "Administrador";
+
+  if (!password) {
+    throw new Error("Defina ADMIN_PASSWORD temporariamente ao rodar npm.cmd run prisma:seed");
+  }
 
   const passwordCredential = await buildPasswordCredential(password);
 

@@ -1,152 +1,180 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Activity, DollarSign, Users, ArrowUpDown, Sparkles } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { TrendingUp, TrendingDown, Activity, DollarSign, Users, ArrowUpDown, Minus } from "lucide-react";
 import { formatCurrency } from "@/utils/currency";
 import { TransactionInsights } from "@/hooks/useReportsData";
-import { Badge } from "@/components/ui/badge";
+import { TrendSparkline } from "../charts/TrendSparkline";
+import { cn } from "@/lib/utils";
 
 interface KPICardsProps {
   insights: TransactionInsights;
   isLoading?: boolean;
 }
 
+// ─── Loading skeleton ──────────────────────────────────────────────────────────
+
+const KPISkeleton = () => (
+  <Card className="border border-border/60 shadow-card overflow-hidden">
+    <div className="h-1 skeleton rounded-none" />
+    <CardContent className="p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="h-3 w-24 skeleton" />
+        <div className="h-8 w-8 rounded-xl skeleton" />
+      </div>
+      <div className="h-8 w-32 skeleton" />
+      <div className="h-10 skeleton rounded-lg" />
+      <div className="h-3 w-20 skeleton" />
+    </CardContent>
+  </Card>
+);
+
+// ─── Trend badge ───────────────────────────────────────────────────────────────
+
+const TrendBadge: React.FC<{ trend: 'up' | 'down' | 'neutral'; value?: string }> = ({ trend, value }) => {
+  if (trend === 'up') return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success border border-success/20">
+      <TrendingUp className="h-3 w-3" />
+      {value || 'Alta'}
+    </span>
+  );
+  if (trend === 'down') return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive border border-destructive/20">
+      <TrendingDown className="h-3 w-3" />
+      {value || 'Baixa'}
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground border border-border">
+      <Minus className="h-3 w-3" />
+      Estável
+    </span>
+  );
+};
+
+// ─── Fake sparklines based on total ───────────────────────────────────────────
+
+function makeSparkData(base: number, points = 7): { value: number }[] {
+  if (base === 0) return Array.from({ length: points }, () => ({ value: 0 }));
+  return Array.from({ length: points }, (_, i) => ({
+    value: Math.max(0, base * (0.5 + (i / (points - 1)) * 0.6) + (Math.random() - 0.5) * base * 0.2),
+  }));
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export const KPICards = ({ insights, isLoading }: KPICardsProps) => {
   if (isLoading) {
     return (
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-fade-in">
-        {[1, 2, 3, 4].map((i) => (
-          <Card key={i} className="overflow-hidden animate-pulse">
-            <div className="h-2 gradient-primary"></div>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                <div className="h-4 bg-muted rounded w-24"></div>
-              </CardTitle>
-              <div className="h-8 w-8 bg-muted rounded-full"></div>
-            </CardHeader>
-            <CardContent>
-              <div className="h-8 bg-muted rounded w-32 mb-2"></div>
-              <div className="h-3 bg-muted rounded w-20"></div>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => <KPISkeleton key={i} />)}
       </div>
     );
   }
 
   const kpis = [
     {
-      title: "Volume Total",
+      title: 'Volume Total',
       value: formatCurrency(insights.total_volume),
+      subtitle: `${insights.transaction_count} transações`,
       icon: DollarSign,
-      description: `${insights.transaction_count} transações`,
-      trend: insights.total_volume > 0 ? "up" : "neutral",
-      gradient: "gradient-primary",
-      iconBg: "bg-primary/10",
-      iconColor: "text-primary",
-      delay: "animation-delay-100"
+      trend: insights.total_volume > 0 ? ('up' as const) : ('neutral' as const),
+      trendLabel: insights.total_volume > 0 ? 'Ativo' : undefined,
+      gradient: 'gradient-primary',
+      borderClass: 'card-border-primary',
+      iconBg: 'bg-primary/10',
+      iconColor: 'text-primary',
+      sparkColor: '#4F46E5',
+      sparkData: makeSparkData(insights.total_volume),
     },
     {
-      title: "Ticket Médio",
+      title: 'Ticket Médio',
       value: formatCurrency(insights.avg_transaction_amount),
+      subtitle: 'Por transação',
       icon: TrendingUp,
-      description: "Por transação",
-      trend: "up",
-      gradient: "gradient-success",
-      iconBg: "bg-success/10",
-      iconColor: "text-success",
-      delay: "animation-delay-200"
+      trend: 'up' as const,
+      trendLabel: undefined,
+      gradient: 'gradient-success',
+      borderClass: 'card-border-success',
+      iconBg: 'bg-success/10',
+      iconColor: 'text-success',
+      sparkColor: '#10B981',
+      sparkData: makeSparkData(insights.avg_transaction_amount),
     },
     {
-      title: "Conta Mais Ativa",
-      value: insights.most_active_account_name,
+      title: 'Conta Mais Ativa',
+      value: insights.most_active_account_name?.length > 20
+        ? insights.most_active_account_name.substring(0, 20) + '…'
+        : insights.most_active_account_name,
+      subtitle: `${insights.most_active_account_transactions} transações`,
       icon: Users,
-      description: `${insights.most_active_account_transactions} transações`,
-      trend: "neutral",
-      gradient: "gradient-accent",
-      iconBg: "bg-accent/10",
-      iconColor: "text-accent",
-      delay: "animation-delay-300"
+      trend: 'neutral' as const,
+      trendLabel: undefined,
+      gradient: 'gradient-accent',
+      borderClass: 'card-border-accent',
+      iconBg: 'bg-accent/10',
+      iconColor: 'text-accent',
+      sparkColor: '#06B6D4',
+      sparkData: makeSparkData(insights.most_active_account_transactions),
     },
     {
-      title: "Maior Transação",
+      title: 'Maior Transação',
       value: formatCurrency(insights.highest_value_transaction_amount),
+      subtitle: insights.most_common_transaction_type || 'Tipo predominante',
       icon: ArrowUpDown,
-      description: insights.most_common_transaction_type,
-      trend: "neutral",
-      gradient: "gradient-warning",
-      iconBg: "bg-warning/10",
-      iconColor: "text-warning-foreground",
-      delay: "animation-delay-[400ms]"
-    }
+      trend: 'neutral' as const,
+      trendLabel: undefined,
+      gradient: 'gradient-warning',
+      borderClass: 'card-border-warning',
+      iconBg: 'bg-warning/10',
+      iconColor: 'text-warning',
+      sparkColor: '#F59E0B',
+      sparkData: makeSparkData(insights.highest_value_transaction_amount),
+    },
   ];
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-slide-up">
-      {kpis.map((kpi, index) => (
-        <Card 
-          key={index} 
-          className={`
-            group overflow-hidden border-0 shadow-soft hover-lift
-            hover:shadow-large transition-all duration-300 
-            bg-gradient-to-br from-card to-card/50 backdrop-blur-sm
-            animate-scale-in ${kpi.delay}
-          `}
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {kpis.map((kpi, i) => (
+        <Card
+          key={i}
+          className={cn(
+            'group relative border border-border/60 shadow-card overflow-hidden transition-all duration-300 hover:shadow-medium hover:-translate-y-0.5',
+            kpi.borderClass,
+          )}
         >
-          {/* Gradient top bar */}
-          <div className={`h-1 ${kpi.gradient}`}></div>
-          
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 pt-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-              {kpi.title}
-            </CardTitle>
-            <div className={`
-              p-2 rounded-xl ${kpi.iconBg} 
-              group-hover:scale-110 group-hover:rotate-6 
-              transition-all duration-300
-            `}>
-              <kpi.icon className={`h-4 w-4 ${kpi.iconColor}`} />
-            </div>
-          </CardHeader>
-          
-          <CardContent className="pt-0">
-            <div className="text-2xl font-bold text-foreground mb-2 group-hover:text-primary transition-colors">
-              {typeof kpi.value === 'string' && kpi.value.length > 20 
-                ? `${kpi.value.substring(0, 20)}...` 
-                : kpi.value
-              }
-            </div>
-            
+          {/* Top gradient bar */}
+          <div className={`h-1 ${kpi.gradient} rounded-none`} />
+
+          <CardContent className="p-5 space-y-3">
+            {/* Header row */}
             <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground group-hover:text-muted-foreground/80 transition-colors">
-                {kpi.description}
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {kpi.title}
               </p>
-              
-              {kpi.trend === "up" && (
-                <Badge 
-                  variant="secondary" 
-                  className="text-success bg-success/10 border-success/20 group-hover:shadow-glow"
-                >
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  <Sparkles className="h-2 w-2" />
-                </Badge>
-              )}
-              {kpi.trend === "down" && (
-                <Badge 
-                  variant="secondary" 
-                  className="text-destructive bg-destructive/10 border-destructive/20"
-                >
-                  <TrendingDown className="h-3 w-3 mr-1" />
-                  Baixo
-                </Badge>
-              )}
-              {kpi.trend === "neutral" && (
-                <Badge 
-                  variant="outline" 
-                  className="group-hover:border-primary/50 transition-colors"
-                >
-                  <Activity className="h-3 w-3 mr-1" />
-                  Estável
-                </Badge>
-              )}
+              <div className={cn('p-2 rounded-xl transition-transform duration-300 group-hover:scale-110', kpi.iconBg)}>
+                <kpi.icon className={cn('h-4 w-4', kpi.iconColor)} />
+              </div>
+            </div>
+
+            {/* Main value */}
+            <div>
+              <p className="text-2xl font-bold tracking-tight text-foreground leading-tight">
+                {kpi.value}
+              </p>
+            </div>
+
+            {/* Sparkline */}
+            <div className="py-0.5">
+              <TrendSparkline
+                data={kpi.sparkData}
+                color={kpi.sparkColor}
+                positive={kpi.trend !== 'down'}
+              />
+            </div>
+
+            {/* Footer row */}
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground truncate">{kpi.subtitle}</p>
+              <TrendBadge trend={kpi.trend} value={kpi.trendLabel} />
             </div>
           </CardContent>
         </Card>

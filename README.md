@@ -18,14 +18,21 @@ Aplicacao React + API Node/TypeScript com PostgreSQL proprio. O runtime nao usa 
 docker compose up -d postgres
 ```
 
-3. Aplique migrations e crie o admin inicial:
+3. Aplique migrations:
 
 ```sh
 npm run prisma:deploy
-npm run prisma:seed
 ```
 
-4. Rode API e frontend em dois terminais:
+4. Crie ou atualize o admin inicial passando a senha apenas na sessao atual do terminal:
+
+```powershell
+$env:ADMIN_PASSWORD = Read-Host "Digite a senha do admin"
+npm run prisma:seed
+Remove-Item Env:ADMIN_PASSWORD
+```
+
+5. Rode API e frontend em dois terminais:
 
 ```sh
 npm run dev:api
@@ -38,7 +45,9 @@ API: `http://localhost:3001/api`
 Credenciais iniciais de desenvolvimento:
 
 - Email: `admin@local.dev`
-- Senha: valor de `ADMIN_PASSWORD` no `.env`
+- Senha: a senha digitada temporariamente ao rodar `npm run prisma:seed`
+
+Nao salve `ADMIN_PASSWORD` em `.env`, `.env.example`, README ou qualquer arquivo versionado.
 
 ## Migracao de dados do Supabase
 
