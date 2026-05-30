@@ -1,7 +1,15 @@
+import type { Prisma } from "@prisma/client";
+import { ADM_ACCOUNT_NUMBER } from "../constants/index.js";
 import { prisma } from "../lib/prisma.js";
+import { badRequest, notFound } from "../utils/errors.js";
 import { positionFromBalance, serializeAccount, serializeTransaction } from "../utils/serialize.js";
 import { buildTransactionWhere, type TransactionFilters } from "./transaction-service.js";
-import type { AccountType } from "@prisma/client";
+import {
+  calculateHistoricalLoanSnapshot,
+  matchesLoanVisibility,
+  resolveLoanCutoff,
+  type LoanVisibility,
+} from "./loan-report-rules.js";
 
 export async function getTransactionInsights(filters: TransactionFilters = {}) {
   const transactions = await prisma.transaction.findMany({
@@ -204,85 +212,369 @@ export async function getAccountBreakdown(accountId: string, filters: Transactio
   };
 }
 
-export async function getAdmPosition(filters: TransactionFilters = {}) {
-  const loans = await prisma.transaction.findMany({
-    where: {
-      ...buildTransactionWhere(filters),
-      transactionType: "emprestimo",
-      status: { in: ["pending_return", "partially_returned"] },
-      AND: [
-        {
-          OR: [
-            { sourceAccount: { accountType: "adm" } },
-            { destinationAccount: { accountType: "adm" } },
-          ],
-        },
-        { NOT: { sourceAccount: { accountType: "transitoria" } } },
-        { NOT: { destinationAccount: { accountType: "transitoria" } } },
-      ],
-    },
-    include: {
-      sourceAccount: { include: { coordinator: true } },
-      destinationAccount: { include: { coordinator: true } },
-      returns: { where: { transactionType: "devolucao" } },
-    },
-    orderBy: { transactionDate: "asc" },
-  });
+function oldestDate(projects: Array<{ oldest_date: string }>): string | null {
+  return projects.reduce<string | null>((acc, p) => {
+    if (!acc) return p.oldest_date;
+    return p.oldest_date < acc ? p.oldest_date : acc;
+  }, null);
+}
 
+export interface LoanReportFilters {
+  asOf?: string;
+  projectId?: string;
+  loanStatus?: LoanVisibility;
+}
+
+const LOAN_ACCOUNT_INCLUDE = { include: { coordinator: true } } as const;
+
+type LoanWithRelations = Prisma.TransactionGetPayload<{
+  include: {
+    sourceAccount: typeof LOAN_ACCOUNT_INCLUDE;
+    destinationAccount: typeof LOAN_ACCOUNT_INCLUDE;
+    returns: {
+      include: {
+        sourceAccount: typeof LOAN_ACCOUNT_INCLUDE;
+        destinationAccount: typeof LOAN_ACCOUNT_INCLUDE;
+      };
+    };
+  };
+}>;
+
+function getLoanInclude(cutoff: Date) {
+  return {
+    sourceAccount: LOAN_ACCOUNT_INCLUDE,
+    destinationAccount: LOAN_ACCOUNT_INCLUDE,
+    returns: {
+      where: {
+        transactionType: "devolucao" as const,
+        transactionDate: { lte: cutoff },
+      },
+      include: {
+        sourceAccount: LOAN_ACCOUNT_INCLUDE,
+        destinationAccount: LOAN_ACCOUNT_INCLUDE,
+      },
+      orderBy: { transactionDate: "asc" as const },
+    },
+  };
+}
+
+function buildLoanSnapshot(loan: LoanWithRelations, cutoff: Date) {
+  const snapshot = calculateHistoricalLoanSnapshot(
+    Number(loan.amount),
+    loan.transactionDate,
+    loan.returns.map((item) => ({
+      amount: Number(item.amount),
+      transactionDate: item.transactionDate,
+    })),
+    cutoff,
+  );
+
+  return {
+    loan: {
+      ...serializeTransaction(loan),
+      status: snapshot.status,
+    },
+    returns: loan.returns.map(serializeTransaction),
+    borrowed: snapshot.borrowed,
+    returned: snapshot.returned,
+    pending: snapshot.pending,
+    days_outstanding: snapshot.daysOutstanding,
+    return_percentage: snapshot.returnPercentage,
+  };
+}
+
+function buildAdmLoanDetail(loan: LoanWithRelations, admAccountId: string, cutoff: Date) {
+  const projectIsSource = loan.sourceAccountId !== admAccountId;
+  return {
+    direction: projectIsSource ? "adm_owes_projects" as const : "projects_owe_adm" as const,
+    project: serializeAccount(projectIsSource ? loan.sourceAccount : loan.destinationAccount),
+    ...buildLoanSnapshot(loan, cutoff),
+  };
+}
+
+type AdmLoanDetail = ReturnType<typeof buildAdmLoanDetail>;
+
+function buildDebtGroup(loans: AdmLoanDetail[], visibility: LoanVisibility) {
   const byProject = new Map<string, {
     account: ReturnType<typeof serializeAccount>;
     borrowed: number;
     returned: number;
+    pending: number;
     oldest_date: string;
-    transactions: ReturnType<typeof serializeTransaction>[];
+    open_loans_count: number;
+    loan_count: number;
   }>();
 
   for (const loan of loans) {
-    const srcType = loan.sourceAccount.accountType as AccountType;
-    const dstType = loan.destinationAccount.accountType as AccountType;
+    if (!matchesLoanVisibility(loan.pending, visibility)) continue;
 
-    // The project account is the non-ADM side
-    const projectAccount = srcType === "projeto" ? loan.sourceAccount : loan.destinationAccount;
+    const dateStr = loan.loan.transaction_date;
 
-    const loanAmount = Number(loan.amount);
-    const returnedAmount = loan.returns.reduce((sum, r) => sum + Number(r.amount), 0);
-
-    const existing = byProject.get(projectAccount.id);
+    const existing = byProject.get(loan.project.id);
     if (existing) {
-      existing.borrowed += loanAmount;
-      existing.returned += returnedAmount;
-      existing.transactions.push(serializeTransaction(loan));
-      if (loan.transactionDate.toISOString() < existing.oldest_date) {
-        existing.oldest_date = loan.transactionDate.toISOString();
-      }
+      existing.borrowed += loan.borrowed;
+      existing.returned += loan.returned;
+      existing.pending += loan.pending;
+      existing.open_loans_count += loan.pending > 0 ? 1 : 0;
+      existing.loan_count += 1;
+      if (dateStr < existing.oldest_date) existing.oldest_date = dateStr;
     } else {
-      byProject.set(projectAccount.id, {
-        account: serializeAccount(projectAccount),
-        borrowed: loanAmount,
-        returned: returnedAmount,
-        oldest_date: loan.transactionDate.toISOString(),
-        transactions: [serializeTransaction(loan)],
+      byProject.set(loan.project.id, {
+        account: loan.project,
+        borrowed: loan.borrowed,
+        returned: loan.returned,
+        pending: loan.pending,
+        oldest_date: dateStr,
+        open_loans_count: loan.pending > 0 ? 1 : 0,
+        loan_count: 1,
       });
     }
   }
 
-  const projects = [...byProject.values()]
-    .map((p) => ({ ...p, pending: p.borrowed - p.returned }))
-    .filter((p) => p.pending > 0)
-    .sort((a, b) => b.pending - a.pending);
+  return [...byProject.values()]
+    .map((p) => {
+      const return_percentage = p.borrowed > 0 ? (p.returned / p.borrowed) * 100 : 0;
+      return { ...p, return_percentage };
+    })
+    .sort((a, b) => b.pending - a.pending || b.borrowed - a.borrowed);
+}
 
-  const total_adm_debt = projects.reduce((sum, p) => sum + p.pending, 0);
+async function getRequiredAdmAccount() {
+  const admAccount = await prisma.account.findUnique({
+    where: { accountNumber: ADM_ACCOUNT_NUMBER },
+    include: { coordinator: true },
+  });
 
-  const oldest = projects.reduce<string | null>((acc, p) => {
-    if (!acc) return p.oldest_date;
-    return p.oldest_date < acc ? p.oldest_date : acc;
-  }, null);
+  if (!admAccount) throw notFound(`Conta ADM ${ADM_ACCOUNT_NUMBER} nao cadastrada`);
+  if (admAccount.accountType !== "adm") {
+    throw badRequest(`A conta ${ADM_ACCOUNT_NUMBER} precisa estar classificada como ADM`);
+  }
+
+  return admAccount;
+}
+
+async function loadAdmLoans(filters: LoanReportFilters = {}) {
+  const admAccount = await getRequiredAdmAccount();
+  const cutoff = resolveLoanCutoff(filters.asOf);
+  const loans = await prisma.transaction.findMany({
+    where: {
+      transactionType: "emprestimo",
+      transactionDate: { lte: cutoff },
+      OR: [
+        {
+          sourceAccount: { accountType: "projeto" },
+          destinationAccountId: admAccount.id,
+          ...(filters.projectId ? { sourceAccountId: filters.projectId } : {}),
+        },
+        {
+          sourceAccountId: admAccount.id,
+          destinationAccount: { accountType: "projeto" },
+          ...(filters.projectId ? { destinationAccountId: filters.projectId } : {}),
+        },
+      ],
+    },
+    include: getLoanInclude(cutoff),
+    orderBy: { transactionDate: "asc" },
+  });
 
   return {
-    total_adm_debt,
-    creditor_projects_count: projects.length,
-    oldest_loan_date: oldest,
-    by_project: projects,
+    admAccount,
+    cutoff,
+    visibility: filters.loanStatus ?? "open",
+    loans: loans.map((loan) => buildAdmLoanDetail(loan, admAccount.id, cutoff)),
+  };
+}
+
+function buildAdmPosition(data: Awaited<ReturnType<typeof loadAdmLoans>>) {
+  const admOwesProjects = buildDebtGroup(
+    data.loans.filter((loan) => loan.direction === "adm_owes_projects"),
+    data.visibility,
+  );
+  const projectsOweAdm = buildDebtGroup(
+    data.loans.filter((loan) => loan.direction === "projects_owe_adm"),
+    data.visibility,
+  );
+
+  const admOwesTotal = admOwesProjects.reduce((sum, project) => sum + project.pending, 0);
+  const projectsOweTotal = projectsOweAdm.reduce((sum, project) => sum + project.pending, 0);
+
+  return {
+    adm_account: serializeAccount(data.admAccount),
+    as_of: data.cutoff.toISOString(),
+    loan_status: data.visibility,
+    net_position: admOwesTotal - projectsOweTotal,
+    adm_owes_projects: {
+      total: admOwesTotal,
+      count: admOwesProjects.length,
+      oldest_loan_date: oldestDate(admOwesProjects),
+      by_project: admOwesProjects,
+    },
+    projects_owe_adm: {
+      total: projectsOweTotal,
+      count: projectsOweAdm.length,
+      oldest_loan_date: oldestDate(projectsOweAdm),
+      by_project: projectsOweAdm,
+    },
+  };
+}
+
+export async function getAdmPosition(filters: LoanReportFilters = {}) {
+  return buildAdmPosition(await loadAdmLoans(filters));
+}
+
+export async function getAdmProjectDetails(projectId: string, filters: LoanReportFilters = {}) {
+  const project = await prisma.account.findUnique({
+    where: { id: projectId },
+    include: { coordinator: true },
+  });
+  if (!project || project.accountType !== "projeto") {
+    throw notFound("Projeto nao encontrado");
+  }
+
+  const data = await loadAdmLoans({ ...filters, projectId });
+  const visibleLoans = data.loans.filter((loan) => matchesLoanVisibility(loan.pending, data.visibility));
+
+  return {
+    adm_account: serializeAccount(data.admAccount),
+    project: serializeAccount(project),
+    as_of: data.cutoff.toISOString(),
+    loan_status: data.visibility,
+    adm_owes_projects: visibleLoans.filter((loan) => loan.direction === "adm_owes_projects"),
+    projects_owe_adm: visibleLoans.filter((loan) => loan.direction === "projects_owe_adm"),
+  };
+}
+
+export async function getAdmPositionExport(filters: LoanReportFilters = {}) {
+  const data = await loadAdmLoans(filters);
+  const position = buildAdmPosition(data);
+  const visibleLoans = data.loans.filter((loan) => matchesLoanVisibility(loan.pending, data.visibility));
+  const directionLabel = {
+    adm_owes_projects: "ADM deve ao projeto",
+    projects_owe_adm: "Projeto deve a ADM",
+  };
+
+  return {
+    as_of: data.cutoff.toISOString(),
+    consolidated: [
+      ...position.adm_owes_projects.by_project.map((project) => ({
+        direction: directionLabel.adm_owes_projects,
+        project_name: project.account.name,
+        project_account_number: project.account.account_number,
+        borrowed: project.borrowed,
+        returned: project.returned,
+        pending: project.pending,
+        open_loans_count: project.open_loans_count,
+      })),
+      ...position.projects_owe_adm.by_project.map((project) => ({
+        direction: directionLabel.projects_owe_adm,
+        project_name: project.account.name,
+        project_account_number: project.account.account_number,
+        borrowed: project.borrowed,
+        returned: project.returned,
+        pending: project.pending,
+        open_loans_count: project.open_loans_count,
+      })),
+    ],
+    movements: visibleLoans.flatMap((item) => [
+      {
+        direction: directionLabel[item.direction],
+        project_name: item.project.name,
+        project_account_number: item.project.account_number,
+        movement_type: "Emprestimo",
+        identifier: item.loan.unique_identifier,
+        transaction_date: item.loan.transaction_date,
+        description: item.loan.description,
+        amount: item.loan.amount,
+        source_account_number: item.loan.source_account_number,
+        destination_account_number: item.loan.destination_account_number,
+        loan_identifier: item.loan.unique_identifier,
+        status: item.loan.status,
+      },
+      ...item.returns.map((movement) => ({
+        direction: directionLabel[item.direction],
+        project_name: item.project.name,
+        project_account_number: item.project.account_number,
+        movement_type: "Devolucao",
+        identifier: movement.unique_identifier,
+        transaction_date: movement.transaction_date,
+        description: movement.description,
+        amount: movement.amount,
+        source_account_number: movement.source_account_number,
+        destination_account_number: movement.destination_account_number,
+        loan_identifier: item.loan.unique_identifier,
+        status: movement.status,
+      })),
+    ]),
+  };
+}
+
+export async function getInterProjectLoans(filters: LoanReportFilters = {}) {
+  const cutoff = resolveLoanCutoff(filters.asOf);
+  const visibility = filters.loanStatus ?? "open";
+  const loans = await prisma.transaction.findMany({
+    where: {
+      transactionType: "emprestimo",
+      transactionDate: { lte: cutoff },
+      sourceAccount: { accountType: "projeto" },
+      destinationAccount: { accountType: "projeto" },
+    },
+    include: getLoanInclude(cutoff),
+    orderBy: { transactionDate: "asc" },
+  });
+
+  type PairEntry = {
+    creditor: ReturnType<typeof serializeAccount>;
+    debtor: ReturnType<typeof serializeAccount>;
+    borrowed: number;
+    returned: number;
+    oldest_date: string;
+    transactions: ReturnType<typeof serializeTransaction>[];
+  };
+
+  const byPair = new Map<string, PairEntry>();
+
+  for (const loan of loans) {
+    const snapshot = buildLoanSnapshot(loan, cutoff);
+    if (!matchesLoanVisibility(snapshot.pending, visibility)) continue;
+
+    const key = `${loan.sourceAccountId}__${loan.destinationAccountId}`;
+    const dateStr = loan.transactionDate.toISOString();
+
+    const existing = byPair.get(key);
+    if (existing) {
+      existing.borrowed += snapshot.borrowed;
+      existing.returned += snapshot.returned;
+      existing.transactions.push(snapshot.loan);
+      if (dateStr < existing.oldest_date) existing.oldest_date = dateStr;
+    } else {
+      byPair.set(key, {
+        creditor: serializeAccount(loan.sourceAccount),
+        debtor: serializeAccount(loan.destinationAccount),
+        borrowed: snapshot.borrowed,
+        returned: snapshot.returned,
+        oldest_date: dateStr,
+        transactions: [snapshot.loan],
+      });
+    }
+  }
+
+  const pairs = [...byPair.values()]
+    .map((p) => {
+      const pending = p.borrowed - p.returned;
+      const days_outstanding = Math.max(
+        0,
+        Math.floor((cutoff.getTime() - new Date(p.oldest_date).getTime()) / 86_400_000),
+      );
+      const return_percentage = p.borrowed > 0 ? (p.returned / p.borrowed) * 100 : 0;
+      return { ...p, pending, days_outstanding, return_percentage };
+    })
+    .sort((a, b) => b.pending - a.pending);
+
+  return {
+    total_circulating: pairs.reduce((s, p) => s + p.pending, 0),
+    active_pairs_count: pairs.length,
+    oldest_loan_date: oldestDate(pairs),
+    by_pair: pairs,
   };
 }
 

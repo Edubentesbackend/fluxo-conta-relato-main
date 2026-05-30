@@ -175,17 +175,21 @@ const Index = () => {
               </div>
 
               {/* Quick stats — 3 cards em linha */}
-              <div className="grid grid-cols-3 gap-3 lg:flex lg:gap-3 shrink-0">
+              <div className="grid min-w-0 grid-cols-3 gap-2 lg:flex lg:gap-3 lg:shrink-0">
                 {quickStats.map((stat, i) => (
                   <motion.div
                     key={i}
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.1 + i * 0.08 }}
-                    className="flex flex-col items-center gap-0.5 rounded-xl border border-border/60 bg-secondary/30 px-4 py-3 text-center lg:min-w-[100px] lg:items-start lg:text-left"
+                    className="flex min-w-0 flex-col items-center gap-0.5 rounded-xl border border-border/60 bg-secondary/30 px-2 py-3 text-center sm:px-4 lg:min-w-[100px] lg:items-start lg:text-left"
                   >
                     <span className="text-base">{stat.icon}</span>
-                    <span className="text-base font-bold leading-tight sm:text-lg">
+                    <span className={`max-w-full font-bold leading-tight ${
+                      stat.isFormatted
+                        ? 'whitespace-nowrap text-xs min-[360px]:text-sm sm:text-lg'
+                        : 'break-words text-sm min-[360px]:text-base sm:text-lg'
+                    }`}>
                       {stat.isFormatted ? stat.value : stat.value.toLocaleString('pt-BR')}
                       {stat.suffix}
                     </span>

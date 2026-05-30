@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { BarChart3, FileText, TrendingUp, Filter, RefreshCw, Download, Play, Eye, Settings, Bell } from 'lucide-react';
+import { BarChart3, FileText, TrendingUp, TrendingDown, Filter, RefreshCw, Download, Play, Eye, Settings, Bell } from 'lucide-react';
 
 import { KPICards } from './dashboard/KPICards';
 import { ActivityChart } from './dashboard/ActivityChart';
@@ -19,7 +19,6 @@ import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
 import { HeatmapChart } from '@/components/dashboard/HeatmapChart';
 import { SecurityIndicator } from '@/components/dashboard/SecurityIndicator';
 import { APIStatusMonitor } from '@/components/dashboard/APIStatusMonitor';
-import { PresentationMode } from '@/components/dashboard/PresentationMode';
 import { MultiDashboardSelector, type DashboardProfile } from '@/components/dashboard/MultiDashboardSelector';
 import { ExportOptions } from '@/components/dashboard/ExportOptions';
 import { GuidedTour, TourTrigger } from '@/components/ui/guided-tour';
@@ -30,6 +29,7 @@ import { AdvancedFilters, AdvancedFiltersData } from './filters/AdvancedFilters'
 import { InteractiveTable } from './tables/InteractiveTable';
 import { ReturnsTracker } from '@/components/reports/ReturnsTracker';
 import { SegregatedBalanceReport } from '@/components/reports/SegregatedBalanceReport';
+import { LoansDashboard } from '@/components/reports/LoansDashboard';
 
 import { useTransactionInsights, useMonthlyVolumes, useOptimizedAccountSummaries, useExecutiveInsights } from '@/hooks/useReportsData';
 import { useTransactions, TransactionWithAccounts } from '@/hooks/useTransactions';
@@ -40,9 +40,8 @@ import { exportAccountSummariesToExcel, exportTransactionsToExcel, exportInsight
 
 export const NewReportsDashboard = () => {
   const [filters, setFilters] = useState<AdvancedFiltersData>({});
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('loans');
   const [tourOpen, setTourOpen] = useState(false);
-  const [presentationMode, setPresentationMode] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<DashboardProfile>("ceo");
   const [showFilters, setShowFilters] = useState(false);
   const queryClient = useQueryClient();
@@ -275,41 +274,33 @@ export const NewReportsDashboard = () => {
       target: "[data-tour='export-options']",
       position: "left" as const
     },
-    {
-      id: "presentation-mode",
-      title: "Modo Apresentação",
-      content: "Ative o modo apresentação para exibir dashboards em reuniões executivas.",
-      target: "[data-tour='presentation-mode']",
-      position: "left" as const
-    }
   ];
 
   return (
-    <PresentationMode isActive={presentationMode} onToggle={() => setPresentationMode(!presentationMode)}>
-      <motion.div 
-        className="space-y-8"
+      <motion.div
+        className="space-y-5"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
       >
       {/* Header */}
-      <Card className="gradient-card shadow-large border-0 overflow-hidden hover-lift">
-        <CardContent className="p-8">
-          <div className="flex items-center justify-between">
+      <Card className="border border-border/70 shadow-sm">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-4">
-              <div className="gradient-support p-3 rounded-2xl shadow-glow">
-                <BarChart3 className="h-8 w-8 text-white" />
+              <div className="gradient-support rounded-lg p-2 shadow-sm">
+                <BarChart3 className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-support via-primary to-accent bg-clip-text text-transparent animate-slide-up">
-                  Relatórios Avançados
+                <h1 className="text-xl font-bold">
+                  Relatórios financeiros
                 </h1>
-                <p className="text-muted-foreground text-lg animate-fade-in-delayed">
-                  Dashboard inteligente com insights e análises automáticas
+                <p className="text-sm text-muted-foreground">
+                  Consulte empréstimos, saldos e movimentações por conta.
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2">
               <ThemeToggle variant="minimal" />
               <HelpCenter />
               <TourTrigger onStart={() => setTourOpen(true)} />
@@ -332,7 +323,7 @@ export const NewReportsDashboard = () => {
                 }} 
               />
               <Button 
-                className="gradient-primary text-white shadow-soft hover:shadow-glow transition-all duration-300 hover:scale-105" 
+                className="gradient-primary text-white shadow-soft"
                 size="sm" 
                 onClick={handleRefresh}
               >
@@ -363,42 +354,36 @@ export const NewReportsDashboard = () => {
         )}
       </AnimatePresence>
 
-      {/* Dashboard Profile Selector */}
-      <motion.div
-        data-tour="profile-selector"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
-      >
-        <MultiDashboardSelector
-          selectedProfile={selectedProfile}
-          onProfileChange={setSelectedProfile}
-        />
-      </motion.div>
-
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 p-2 gradient-card shadow-medium rounded-2xl border-0 h-auto sm:h-16 gap-2 sm:gap-0">
-          <TabsTrigger 
-            value="dashboard" 
-            className="flex items-center gap-3 px-6 py-4 rounded-xl font-medium transition-all duration-300 data-[state=active]:gradient-primary data-[state=active]:text-white data-[state=active]:shadow-glow hover:scale-105"
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-border/70 bg-card p-1 shadow-sm lg:grid-cols-4">
+          <TabsTrigger
+            value="loans"
+            className="min-w-0 gap-2 px-2 py-3 text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
-            <BarChart3 className="h-5 w-5" />
+            <TrendingDown className="h-4 w-4 shrink-0" />
+            Empréstimos
+          </TabsTrigger>
+          <TabsTrigger
+            value="dashboard"
+            className="min-w-0 gap-2 px-2 py-3 text-xs sm:text-sm"
+          >
+            <BarChart3 className="h-4 w-4 shrink-0" />
             Dashboard
           </TabsTrigger>
-          <TabsTrigger 
-            value="accounts" 
-            className="flex items-center gap-3 px-6 py-4 rounded-xl font-medium transition-all duration-300 data-[state=active]:gradient-accent data-[state=active]:text-white data-[state=active]:shadow-glow hover:scale-105"
+          <TabsTrigger
+            value="accounts"
+            className="min-w-0 gap-2 px-2 py-3 text-xs sm:text-sm"
           >
-            <FileText className="h-5 w-5" />
-            Relatório de Contas
+            <FileText className="h-4 w-4 shrink-0" />
+            Contas
           </TabsTrigger>
-          <TabsTrigger 
-            value="transactions" 
-            className="flex items-center gap-3 px-6 py-4 rounded-xl font-medium transition-all duration-300 data-[state=active]:gradient-support data-[state=active]:text-white data-[state=active]:shadow-glow hover:scale-105"
+          <TabsTrigger
+            value="transactions"
+            className="min-w-0 gap-2 px-2 py-3 text-xs sm:text-sm"
           >
-            <TrendingUp className="h-5 w-5" />
-            Transações Detalhadas
+            <TrendingUp className="h-4 w-4 shrink-0" />
+            Transações
             {filters.accountId && (
               <Badge className="ml-2 gradient-warning text-warning-foreground shadow-soft animate-bounce-subtle">
                 Filtradas
@@ -408,6 +393,17 @@ export const NewReportsDashboard = () => {
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-8 animate-scale-in">
+          <motion.div
+            data-tour="profile-selector"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <MultiDashboardSelector
+              selectedProfile={selectedProfile}
+              onProfileChange={setSelectedProfile}
+            />
+          </motion.div>
+
           {/* Render different dashboard based on selected profile */}
           {selectedProfile === 'ceo' && (
             <CEODashboard 
@@ -545,6 +541,10 @@ export const NewReportsDashboard = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="loans" className="animate-scale-in">
+          <LoansDashboard />
+        </TabsContent>
       </Tabs>
 
       <GuidedTour 
@@ -556,6 +556,5 @@ export const NewReportsDashboard = () => {
       
       <PWAInstaller />
     </motion.div>
-    </PresentationMode>
   );
 };

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getLoanStatus, validateBasicTransactionRules } from "../src/services/transaction-rules.js";
+import {
+  getLoanStatus,
+  validateBasicTransactionRules,
+  validateReturnTransactionRules,
+} from "../src/services/transaction-rules.js";
 
 describe("transaction rules", () => {
   it("rejects same source and destination account", () => {
@@ -25,5 +29,23 @@ describe("transaction rules", () => {
     expect(getLoanStatus(100, 40)).toBe("partially_returned");
     expect(getLoanStatus(100, 100)).toBe("fully_returned");
     expect(getLoanStatus(100, 120)).toBe("fully_returned");
+  });
+
+  it("rejects invalid loan return dates and amounts", () => {
+    expect(() => validateReturnTransactionRules({
+      loanDate: new Date("2026-05-10T12:00:00.000Z"),
+      returnDate: new Date("2026-05-09T12:00:00.000Z"),
+      loanAmount: 100,
+      alreadyReturned: 0,
+      returnAmount: 10,
+    })).toThrow("anterior ao emprestimo");
+
+    expect(() => validateReturnTransactionRules({
+      loanDate: new Date("2026-05-10T12:00:00.000Z"),
+      returnDate: new Date("2026-05-11T12:00:00.000Z"),
+      loanAmount: 100,
+      alreadyReturned: 80,
+      returnAmount: 30,
+    })).toThrow("nao pode ultrapassar");
   });
 });

@@ -99,21 +99,88 @@ export interface TransactionWithAccounts extends Transaction {
 }
 
 export type FlowScope = 'all' | 'adm' | 'between_projects';
+export type LoanVisibility = 'open' | 'settled' | 'all';
 
-export interface AdmProjectPosition {
+export interface LoanReportFilters {
+  asOf?: Date | string;
+  projectId?: string;
+  loanStatus?: LoanVisibility;
+}
+
+export interface LoanProjectDebt {
   account: Account;
   borrowed: number;
   returned: number;
   pending: number;
+  return_percentage: number;
+  oldest_date: string;
+  open_loans_count: number;
+  loan_count: number;
+}
+
+export interface AdmLoanDetail {
+  direction: 'adm_owes_projects' | 'projects_owe_adm';
+  project: Account;
+  loan: TransactionWithAccounts;
+  returns: TransactionWithAccounts[];
+  borrowed: number;
+  returned: number;
+  pending: number;
+  days_outstanding: number;
+  return_percentage: number;
+}
+
+export interface AdmPositionReport {
+  adm_account: Account;
+  as_of: string;
+  loan_status: LoanVisibility;
+  net_position: number;
+  adm_owes_projects: {
+    total: number;
+    count: number;
+    oldest_loan_date: string | null;
+    by_project: LoanProjectDebt[];
+  };
+  projects_owe_adm: {
+    total: number;
+    count: number;
+    oldest_loan_date: string | null;
+    by_project: LoanProjectDebt[];
+  };
+}
+
+export interface AdmProjectDetailsReport {
+  adm_account: Account;
+  project: Account;
+  as_of: string;
+  loan_status: LoanVisibility;
+  adm_owes_projects: AdmLoanDetail[];
+  projects_owe_adm: AdmLoanDetail[];
+}
+
+export interface AdmPositionExportReport {
+  as_of: string;
+  consolidated: Array<Record<string, string | number | null | undefined>>;
+  movements: Array<Record<string, string | number | null | undefined>>;
+}
+
+export interface InterProjectLoanPair {
+  creditor: Account;
+  debtor: Account;
+  borrowed: number;
+  returned: number;
+  pending: number;
+  days_outstanding: number;
+  return_percentage: number;
   oldest_date: string;
   transactions: TransactionWithAccounts[];
 }
 
-export interface AdmPositionReport {
-  total_adm_debt: number;
-  creditor_projects_count: number;
+export interface InterProjectLoansReport {
+  total_circulating: number;
+  active_pairs_count: number;
   oldest_loan_date: string | null;
-  by_project: AdmProjectPosition[];
+  by_pair: InterProjectLoanPair[];
 }
 
 export interface TransactionFilters {

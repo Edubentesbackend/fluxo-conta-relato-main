@@ -133,7 +133,8 @@ export function InteractiveTable<T extends Record<string, any>>({
 
   const toggleSelectItem = (globalIndex: number) => {
     const s = new Set(selectedItems);
-    s.has(globalIndex) ? s.delete(globalIndex) : s.add(globalIndex);
+    if (s.has(globalIndex)) s.delete(globalIndex);
+    else s.add(globalIndex);
     setSelectedItems(s);
   };
 
@@ -179,7 +180,8 @@ export function InteractiveTable<T extends Record<string, any>>({
                       key={String(col.key)}
                       onClick={() => {
                         const s = new Set(visibleColumns);
-                        s.has(col.key) ? s.delete(col.key) : s.add(col.key);
+                        if (s.has(col.key)) s.delete(col.key);
+                        else s.add(col.key);
                         setVisibleColumns(s);
                       }}
                       className="gap-2 text-xs"

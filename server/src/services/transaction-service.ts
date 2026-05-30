@@ -2,7 +2,11 @@ import { Prisma, type TransactionType } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { badRequest, notFound } from "../utils/errors.js";
 import { serializeTransaction } from "../utils/serialize.js";
-import { getLoanStatus, validateBasicTransactionRules } from "./transaction-rules.js";
+import {
+  getLoanStatus,
+  validateBasicTransactionRules,
+  validateReturnTransactionRules,
+} from "./transaction-rules.js";
 import type { TransactionFilters } from "../types.js";
 
 export type { TransactionFilters };
@@ -177,9 +181,13 @@ export async function createTransaction(input: CreateTransactionInput, createdBy
         _sum: { amount: true },
       });
       const alreadyReturned = Number(aggregate._sum.amount || 0);
-      if (alreadyReturned + input.amount > Number(parent.amount)) {
-        throw badRequest("A soma das devolucoes nao pode ultrapassar o valor do emprestimo");
-      }
+      validateReturnTransactionRules({
+        loanDate: parent.transactionDate,
+        returnDate: transactionDate,
+        loanAmount: Number(parent.amount),
+        alreadyReturned,
+        returnAmount: input.amount,
+      });
     }
 
     const transaction = await tx.transaction.create({

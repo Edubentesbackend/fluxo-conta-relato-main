@@ -4,7 +4,10 @@ import type { TransactionType } from "@prisma/client";
 import {
   getAccountBreakdown,
   getAccountSummaries,
+  getAdmPositionExport,
+  getAdmProjectDetails,
   getAdmPosition,
+  getInterProjectLoans,
   getMonthlyVolumes,
   getReturnsReport,
   getTransactionInsights,
@@ -30,6 +33,12 @@ const filtersSchema = z.object({
   maxAmount: z.coerce.number().positive().optional(),
   description: z.string().optional(),
   flow_scope: z.enum(["all", "adm", "between_projects"]).optional(),
+});
+
+const loanFiltersSchema = z.object({
+  asOf: z.string().datetime().optional(),
+  projectId: z.string().uuid().optional(),
+  loanStatus: z.enum(["open", "settled", "all"]).optional(),
 });
 
 function parseFilters(query: unknown): TransactionFilters {
@@ -71,6 +80,19 @@ export async function reportRoutes(app: FastifyInstance) {
   });
 
   app.get("/adm-position", async (request) => {
-    return getAdmPosition(parseFilters(request.query));
+    return getAdmPosition(loanFiltersSchema.parse(request.query));
+  });
+
+  app.get("/adm-position/export", async (request) => {
+    return getAdmPositionExport(loanFiltersSchema.parse(request.query));
+  });
+
+  app.get("/adm-position/projects/:projectId", async (request) => {
+    const params = z.object({ projectId: z.string().uuid() }).parse(request.params);
+    return getAdmProjectDetails(params.projectId, loanFiltersSchema.omit({ projectId: true }).parse(request.query));
+  });
+
+  app.get("/inter-project-loans", async (request) => {
+    return getInterProjectLoans(loanFiltersSchema.parse(request.query));
   });
 }

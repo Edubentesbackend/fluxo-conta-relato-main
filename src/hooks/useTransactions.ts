@@ -31,6 +31,23 @@ export interface CreateTransactionPayload {
   parent_transaction_id?: string | null;
 }
 
+export interface CreateReturnPayload {
+  transaction_date: string;
+  amount: number;
+  description: string;
+}
+
+function invalidateTransactionReports(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ['transactions'] });
+  queryClient.invalidateQueries({ queryKey: ['transaction-insights'] });
+  queryClient.invalidateQueries({ queryKey: ['monthly-volumes'] });
+  queryClient.invalidateQueries({ queryKey: ['optimized-account-summaries'] });
+  queryClient.invalidateQueries({ queryKey: ['executive-insights-ai'] });
+  queryClient.invalidateQueries({ queryKey: ['adm-position'] });
+  queryClient.invalidateQueries({ queryKey: ['adm-project-details'] });
+  queryClient.invalidateQueries({ queryKey: ['inter-project-loans'] });
+}
+
 export const useTransactions = (filters?: TransactionFilters) => {
   return useQuery({
     queryKey: ['transactions', filters],
@@ -48,11 +65,20 @@ export const useCreateTransaction = () => {
       return transactionsApi.create<Transaction>(transaction);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['transaction-insights'] });
-      queryClient.invalidateQueries({ queryKey: ['monthly-volumes'] });
-      queryClient.invalidateQueries({ queryKey: ['optimized-account-summaries'] });
-      queryClient.invalidateQueries({ queryKey: ['executive-insights-ai'] });
+      invalidateTransactionReports(queryClient);
     }
+  });
+};
+
+export const useCreateReturn = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ loanId, payload }: { loanId: string; payload: CreateReturnPayload }) => {
+      return transactionsApi.createReturn<Transaction>(loanId, payload);
+    },
+    onSuccess: () => {
+      invalidateTransactionReports(queryClient);
+    },
   });
 };

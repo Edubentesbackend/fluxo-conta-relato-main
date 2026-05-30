@@ -21,7 +21,6 @@ import {
   CalendarIcon,
   ArrowRight,
   Banknote,
-  RefreshCcw,
   ArrowLeftRight,
   SlidersHorizontal,
   Split,
@@ -78,7 +77,6 @@ const TX_TYPES: {
   bg: string;
 }[] = [
   { value: 'emprestimo',                  label: 'Empréstimo',          icon: Banknote,          color: 'text-primary',     bg: 'bg-primary/10 border-primary/20' },
-  { value: 'devolucao',                   label: 'Devolução',           icon: RefreshCcw,        color: 'text-success',     bg: 'bg-success/10 border-success/20' },
   { value: 'transferencia_operacional',   label: 'Transferência',       icon: ArrowLeftRight,    color: 'text-accent',      bg: 'bg-accent/10 border-accent/20' },
   { value: 'ajuste',                      label: 'Ajuste',              icon: SlidersHorizontal, color: 'text-support',     bg: 'bg-support/10 border-support/20' },
   { value: 'rateio',                      label: 'Rateio',              icon: Split,             color: 'text-warning',     bg: 'bg-warning/10 border-warning/20' },

@@ -1,11 +1,12 @@
 import { prisma } from "../lib/prisma.js";
 import { serializeAccount } from "../utils/serialize.js";
 import type { AuthUser } from "../types.js";
-import { conflict } from "../utils/errors.js";
+import { conflict, notFound } from "../utils/errors.js";
 import {
   normalizeAccountNumber,
   normalizeCoordinatorName,
 } from "./account-normalization.js";
+import { resolveAccountType } from "./account-rules.js";
 import type { AccountType, Prisma } from "@prisma/client";
 
 export interface CreateAccountInput {
@@ -103,13 +104,14 @@ export async function createProjectCoordinator(name: string) {
 export async function createAccount(input: CreateAccountInput) {
   return prisma.$transaction(async (tx) => {
     const coordinator = await findOrCreateCoordinator(tx, input.coordinator_name);
+    const accountNumber = normalizeAccountNumber(input.account_number);
     const account = await tx.account.create({
       data: {
         name: input.name.trim(),
-        accountNumber: normalizeAccountNumber(input.account_number),
+        accountNumber,
         coordinatorId: coordinator?.id ?? null,
         description: input.description?.trim() || null,
-        accountType: input.account_type ?? "projeto",
+        accountType: resolveAccountType(accountNumber, input.account_type),
       },
       include: { coordinator: true },
     });
@@ -119,19 +121,29 @@ export async function createAccount(input: CreateAccountInput) {
 
 export async function updateAccount(id: string, input: Partial<CreateAccountInput>) {
   return prisma.$transaction(async (tx) => {
+    const existing = await tx.account.findUnique({
+      where: { id },
+      select: { accountNumber: true, accountType: true },
+    });
+    if (!existing) throw notFound("Conta nao encontrada");
+
     const shouldUpdateCoordinator = Object.prototype.hasOwnProperty.call(input, "coordinator_name");
     const coordinator = shouldUpdateCoordinator
       ? await findOrCreateCoordinator(tx, input.coordinator_name)
       : undefined;
+    const accountNumber = input.account_number === undefined
+      ? existing.accountNumber
+      : normalizeAccountNumber(input.account_number);
+    const requestedType = input.account_type ?? existing.accountType;
 
     const account = await tx.account.update({
       where: { id },
       data: {
         name: input.name?.trim(),
-        accountNumber: input.account_number === undefined ? undefined : normalizeAccountNumber(input.account_number),
+        accountNumber: input.account_number === undefined ? undefined : accountNumber,
         coordinatorId: shouldUpdateCoordinator ? coordinator?.id ?? null : undefined,
         description: input.description === undefined ? undefined : input.description?.trim() || null,
-        accountType: input.account_type ?? undefined,
+        accountType: accountNumber ? resolveAccountType(accountNumber, requestedType) : requestedType,
       },
       include: { coordinator: true },
     });
@@ -145,7 +157,10 @@ export async function importAccounts(input: ImportAccountsInput, user: AuthUser)
     name: account.name.trim(),
     coordinator: normalizeOptionalCoordinatorName(account.coordinator_name),
     description: account.description?.trim() || null,
-    accountType: account.account_type ?? "projeto" as AccountType,
+    requestedAccountType: account.account_type,
+  })).map((account) => ({
+    ...account,
+    accountType: resolveAccountType(account.accountNumber, account.requestedAccountType),
   }));
 
   const existing = await prisma.account.findMany({

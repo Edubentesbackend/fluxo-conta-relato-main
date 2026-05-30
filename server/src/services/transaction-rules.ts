@@ -25,8 +25,29 @@ export function validateBasicTransactionRules(input: BasicTransactionRuleInput) 
   }
 }
 
-export function getLoanStatus(loanAmount: number, returnedAmount: number) {
+export function getLoanStatus(
+  loanAmount: number,
+  returnedAmount: number,
+): "pending_return" | "partially_returned" | "fully_returned" {
   if (returnedAmount >= loanAmount) return "fully_returned";
   if (returnedAmount > 0) return "partially_returned";
   return "pending_return";
+}
+
+export interface ReturnTransactionRuleInput {
+  loanDate: Date;
+  returnDate: Date;
+  loanAmount: number;
+  alreadyReturned: number;
+  returnAmount: number;
+}
+
+export function validateReturnTransactionRules(input: ReturnTransactionRuleInput) {
+  if (input.returnDate < input.loanDate) {
+    throw badRequest("A devolucao nao pode ser anterior ao emprestimo original");
+  }
+
+  if (input.alreadyReturned + input.returnAmount > input.loanAmount) {
+    throw badRequest("A soma das devolucoes nao pode ultrapassar o valor do emprestimo");
+  }
 }

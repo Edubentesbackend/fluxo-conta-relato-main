@@ -76,7 +76,8 @@ export function UserAccountMenu() {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            className="h-auto w-full justify-start gap-3 rounded-xl border bg-card/95 px-3 py-2 text-left shadow-soft transition-all hover:bg-card hover:shadow-medium sm:w-[250px]"
+            title={`${displayName} - ${roleLabel}`}
+            className="h-auto w-auto justify-start gap-0 rounded-xl border bg-card/95 px-1.5 py-1.5 text-left shadow-soft transition-all hover:bg-card hover:shadow-medium lg:w-[250px] lg:gap-3 lg:px-3 lg:py-2"
           >
             <Avatar className="h-8 w-8">
               <AvatarFallback className="bg-warning text-[11px] font-semibold text-warning-foreground">
@@ -84,7 +85,7 @@ export function UserAccountMenu() {
               </AvatarFallback>
             </Avatar>
 
-            <span className="min-w-0 flex-1">
+            <span className="hidden min-w-0 flex-1 lg:block">
               <span className="block truncate text-sm font-medium leading-5 text-foreground">
                 {displayName}
               </span>
@@ -93,7 +94,7 @@ export function UserAccountMenu() {
               </span>
             </span>
 
-            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <ChevronDown className="hidden h-4 w-4 shrink-0 text-muted-foreground lg:block" />
           </Button>
         </DropdownMenuTrigger>
 

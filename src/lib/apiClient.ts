@@ -1,4 +1,4 @@
-import { TransactionType } from "@/types/database";
+import { LoanReportFilters, TransactionType } from "@/types/database";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:3001/api").replace(/\/$/, "");
 const TOKEN_STORAGE_KEY = "fluxo_conta_relato_tokens";
@@ -166,6 +166,14 @@ export const reportsApi = {
   accountBreakdown: <T>(id: string, filters?: TransactionFilters) =>
     apiRequest<T>(`/reports/accounts/${id}/breakdown${queryString(filters)}`),
   returns: <T>(filters?: TransactionFilters) => apiRequest<T>(`/reports/returns${queryString(filters)}`),
+  admPosition: <T>(filters?: LoanReportFilters) =>
+    apiRequest<T>(`/reports/adm-position${queryString(filters)}`),
+  admProjectDetails: <T>(projectId: string, filters?: LoanReportFilters) =>
+    apiRequest<T>(`/reports/adm-position/projects/${projectId}${queryString(filters)}`),
+  admPositionExport: <T>(filters?: LoanReportFilters) =>
+    apiRequest<T>(`/reports/adm-position/export${queryString(filters)}`),
+  interProjectLoans: <T>(filters?: LoanReportFilters) =>
+    apiRequest<T>(`/reports/inter-project-loans${queryString(filters)}`),
 };
 
 export const aiApi = {

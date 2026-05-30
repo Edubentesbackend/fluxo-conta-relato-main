@@ -1,5 +1,6 @@
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_IMPORT_ROWS = 5000;
+export const ADM_ACCOUNT_NUMBER = "12671-3";
 
 export const TRANSACTION_TYPES = [
   "emprestimo",
