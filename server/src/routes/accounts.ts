@@ -7,6 +7,7 @@ import {
   listAccounts,
   listProjectCoordinators,
   updateAccount,
+  updateProjectCoordinator,
 } from "../services/account-service.js";
 import type { CreateAccountInput, ImportAccountsInput } from "../services/account-service.js";
 import type { AuthUser } from "../types.js";
@@ -51,6 +52,12 @@ export async function accountRoutes(app: FastifyInstance) {
     const input = createCoordinatorSchema.parse(request.body);
     reply.code(201);
     return createProjectCoordinator(input.name);
+  });
+
+  app.patch("/coordinators/:id", { preHandler: app.requireRoles(["manager"]) }, async (request) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const input = z.object({ name: coordinatorNameSchema }).parse(request.body);
+    return updateProjectCoordinator(params.id, input.name);
   });
 
   app.post("/", { preHandler: app.requireRoles(["manager"]) }, async (request, reply) => {

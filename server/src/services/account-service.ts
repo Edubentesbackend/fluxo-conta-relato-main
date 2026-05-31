@@ -82,6 +82,31 @@ export async function listProjectCoordinators() {
   );
 }
 
+export async function updateProjectCoordinator(id: string, name: string) {
+  const coordinator = normalizeCoordinatorName(name);
+  const existing = await prisma.projectCoordinator.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+
+  if (!existing) throw notFound("Coordenador nao encontrado");
+
+  const conflict = await prisma.projectCoordinator.findFirst({
+    where: { normalizedName: coordinator.normalizedName, NOT: { id } },
+    select: { id: true },
+  });
+
+  if (conflict) throw new Error("Coordenador com esse nome ja existe");
+
+  const updated = await prisma.projectCoordinator.update({
+    where: { id },
+    data: coordinator,
+    select: { id: true, name: true, normalizedName: true },
+  });
+
+  return serializeProjectCoordinator(updated);
+}
+
 export async function createProjectCoordinator(name: string) {
   const coordinator = normalizeCoordinatorName(name);
   const existing = await prisma.projectCoordinator.findUnique({

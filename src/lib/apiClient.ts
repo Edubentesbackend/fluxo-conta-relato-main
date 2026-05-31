@@ -145,6 +145,7 @@ export const accountsApi = {
   list: <T>() => apiRequest<T>("/accounts"),
   coordinators: <T>() => apiRequest<T>("/accounts/coordinators"),
   createCoordinator: <T>(body: unknown) => apiRequest<T>("/accounts/coordinators", { method: "POST", body }),
+  updateCoordinator: <T>(id: string, body: unknown) => apiRequest<T>(`/accounts/coordinators/${id}`, { method: "PATCH", body }),
   create: <T>(body: unknown) => apiRequest<T>("/accounts", { method: "POST", body }),
   update: <T>(id: string, body: unknown) => apiRequest<T>(`/accounts/${id}`, { method: "PATCH", body }),
   importAccounts: <T>(body: unknown) => apiRequest<T>("/accounts/import", { method: "POST", body }),

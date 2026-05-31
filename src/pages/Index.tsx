@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TransactionForm } from '@/components/TransactionForm';
 import { AccountImport } from '@/components/AccountImport';
 import { NewReportsDashboard } from '@/components/reports/NewReportsDashboard';
+import { CadastrosPanel } from '@/components/CadastrosPanel';
 import { UserAccountMenu } from '@/components/UserAccountMenu';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import {
@@ -10,13 +11,12 @@ import {
   Plus,
   Upload,
   BarChart3,
-  Zap,
-  ArrowRight,
+  Database,
 } from 'lucide-react';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useTransactions } from '@/hooks/useTransactions';
 
-type Tab = 'transactions' | 'import' | 'reports';
+type Tab = 'transactions' | 'import' | 'reports' | 'cadastros';
 
 const tabs: { id: Tab; label: string; icon: React.ElementType; gradient: string; glow: string }[] = [
   {
@@ -40,6 +40,13 @@ const tabs: { id: Tab; label: string; icon: React.ElementType; gradient: string;
     gradient: 'gradient-reports',
     glow: 'shadow-[0_0_20px_hsl(221_83%_53%/0.3)]',
   },
+  {
+    id: 'cadastros',
+    label: 'Cadastros',
+    icon: Database,
+    gradient: 'gradient-hero',
+    glow: 'shadow-[0_0_20px_hsl(258_90%_66%/0.3)]',
+  },
 ];
 
 const slideVariants = {
@@ -55,7 +62,7 @@ const Index = () => {
   const { data: accounts = [] } = useAccounts();
   const { data: transactions = [] } = useTransactions({});
 
-  const tabOrder: Tab[] = ['transactions', 'import', 'reports'];
+  const tabOrder: Tab[] = ['transactions', 'import', 'reports', 'cadastros'];
 
   const switchTab = (tab: Tab) => {
     const cur = tabOrder.indexOf(activeTab);
@@ -202,7 +209,7 @@ const Index = () => {
         </motion.div>
 
         {/* Mobile Tab Navigation */}
-        <div className="grid grid-cols-3 gap-2 md:hidden">
+        <div className="grid grid-cols-4 gap-2 md:hidden">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -267,6 +274,17 @@ const Index = () => {
                     description="Visualize métricas, tendências e exportações do período."
                   />
                   <NewReportsDashboard />
+                </div>
+              )}
+              {activeTab === 'cadastros' && (
+                <div className="space-y-4">
+                  <SectionHeader
+                    icon={Database}
+                    gradient="gradient-hero"
+                    title="Cadastros"
+                    description="Visualize e edite as contas e coordenadores cadastrados no sistema."
+                  />
+                  <CadastrosPanel />
                 </div>
               )}
             </motion.div>
