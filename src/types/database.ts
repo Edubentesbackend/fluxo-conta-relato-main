@@ -15,6 +15,7 @@ export interface Account {
   coordinator_id?: string | null;
   coordinator_name?: string | null;
   coordinator?: ProjectCoordinator | null;
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Pencil, Search, Building2, Users, X } from "lucide-react";
+import { Pencil, Search, Building2, Users, X, RotateCcw, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { accountsApi } from "@/lib/apiClient";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -43,6 +43,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -74,6 +84,64 @@ function AccountTypeBadge({ type }: { type: AccountType }) {
     <Badge variant="outline" className={typeBadgeClass[type]}>
       {ACCOUNT_TYPE_LABELS[type]}
     </Badge>
+  );
+}
+
+interface DeleteConfirmationDialogProps {
+  open: boolean;
+  title: string;
+  description: string;
+  itemName: string;
+  isPending: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}
+
+function DeleteConfirmationDialog({
+  open,
+  title,
+  description,
+  itemName,
+  isPending,
+  onOpenChange,
+  onConfirm,
+}: DeleteConfirmationDialogProps) {
+  const [confirmation, setConfirmation] = useState("");
+  const handleOpenChange = (nextOpen: boolean) => {
+    setConfirmation("");
+    onOpenChange(nextOpen);
+  };
+
+  return (
+    <AlertDialog open={open} onOpenChange={handleOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Digite <strong className="text-foreground">{itemName}</strong> para confirmar.
+          </p>
+          <Input
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+            placeholder={itemName}
+            autoComplete="off"
+          />
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isPending}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            disabled={confirmation.trim() !== itemName || isPending}
+            onClick={onConfirm}
+          >
+            {isPending ? "Excluindo..." : "Excluir"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -288,15 +356,48 @@ function EditCoordinatorDialog({ coordinator, onClose }: EditCoordinatorDialogPr
 // ── Aba de Contas ─────────────────────────────────────────────────────────────
 
 function ContasTab() {
-  const { data: accounts = [], isLoading } = useAccounts();
+  const { data: accounts = [], isLoading } = useAccounts(true);
   const { data: coordinators = [] } = useQuery({
     queryKey: ["coordinators"],
     queryFn: () => accountsApi.coordinators<ProjectCoordinator[]>(),
   });
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Account | null>(null);
+  const [deleting, setDeleting] = useState<Account | null>(null);
   const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const canEdit = user?.role === "manager" || user?.role === "admin";
+  const isAdmin = user?.role === "admin";
+
+  const deleteMutation = useMutation({
+    mutationFn: (account: Account) =>
+      accountsApi.delete<{ outcome: "archived" | "deleted"; linked_transactions: number }>(account.id),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      toast({
+        title: result.outcome === "archived" ? "Conta arquivada." : "Conta excluída.",
+        description: result.outcome === "archived"
+          ? "A conta possui movimentações e foi preservada para manter o histórico."
+          : "A conta não possuía movimentações e foi removida definitivamente.",
+      });
+      setDeleting(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao excluir conta", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => accountsApi.restore<{ outcome: "restored" }>(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      toast({ title: "Conta restaurada com sucesso." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao restaurar conta", description: err.message, variant: "destructive" });
+    },
+  });
 
   const filtered = accounts.filter((a) => {
     const q = search.toLowerCase();
@@ -340,7 +441,7 @@ function ContasTab() {
               <TableHead>Número</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Coordenador</TableHead>
-              {canEdit && <TableHead className="w-16 text-right">Ação</TableHead>}
+              {canEdit && <TableHead className="w-28 text-right">Ação</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -358,8 +459,13 @@ function ContasTab() {
               </TableRow>
             ) : (
               filtered.map((account) => (
-                <TableRow key={account.id} className="hover:bg-secondary/20">
-                  <TableCell className="font-medium">{account.name}</TableCell>
+                <TableRow key={account.id} className={account.archived_at ? "bg-muted/30 text-muted-foreground" : "hover:bg-secondary/20"}>
+                  <TableCell className="font-medium">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>{account.name}</span>
+                      {account.archived_at && <Badge variant="secondary">Arquivada</Badge>}
+                    </div>
+                  </TableCell>
                   <TableCell className="font-mono text-sm text-muted-foreground">
                     {account.account_number ?? "—"}
                   </TableCell>
@@ -371,14 +477,43 @@ function ContasTab() {
                   </TableCell>
                   {canEdit && (
                     <TableCell className="text-right">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8"
-                        onClick={() => setEditing(account)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        {!account.archived_at && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            title="Editar conta"
+                            onClick={() => setEditing(account)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {isAdmin && !account.archived_at && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            title={account.account_number === "12671-3" ? "A conta ADM fixa não pode ser excluída" : "Excluir conta"}
+                            disabled={account.account_number === "12671-3"}
+                            onClick={() => setDeleting(account)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {isAdmin && account.archived_at && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            title="Restaurar conta"
+                            disabled={restoreMutation.isPending}
+                            onClick={() => restoreMutation.mutate(account.id)}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   )}
                 </TableRow>
@@ -393,6 +528,15 @@ function ContasTab() {
         coordinators={coordinators}
         onClose={() => setEditing(null)}
       />
+      <DeleteConfirmationDialog
+        open={!!deleting}
+        title="Excluir conta"
+        description="Contas com movimentações serão arquivadas para preservar o histórico. Contas sem movimentações serão removidas definitivamente."
+        itemName={deleting?.name ?? ""}
+        isPending={deleteMutation.isPending}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        onConfirm={() => deleting && deleteMutation.mutate(deleting)}
+      />
     </>
   );
 }
@@ -400,14 +544,37 @@ function ContasTab() {
 // ── Aba de Coordenadores ──────────────────────────────────────────────────────
 
 function CoordinadoresTab() {
-  const { data: accounts = [] } = useAccounts();
+  const { data: accounts = [] } = useAccounts(true);
   const { data: coordinators = [], isLoading } = useQuery({
     queryKey: ["coordinators"],
     queryFn: () => accountsApi.coordinators<ProjectCoordinator[]>(),
   });
   const [editing, setEditing] = useState<ProjectCoordinator | null>(null);
+  const [deleting, setDeleting] = useState<ProjectCoordinator | null>(null);
   const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const canEdit = user?.role === "manager" || user?.role === "admin";
+  const isAdmin = user?.role === "admin";
+
+  const deleteMutation = useMutation({
+    mutationFn: (coordinator: ProjectCoordinator) =>
+      accountsApi.deleteCoordinator<{ unlinked_accounts: number }>(coordinator.id),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["coordinators"] });
+      toast({
+        title: "Coordenador excluído.",
+        description: result.unlinked_accounts > 0
+          ? `${result.unlinked_accounts} conta(s) ficaram sem coordenador.`
+          : "Nenhuma conta estava vinculada a este coordenador.",
+      });
+      setDeleting(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao excluir coordenador", description: err.message, variant: "destructive" });
+    },
+  });
 
   const countByCoordinator = (coordinatorId: string) =>
     accounts.filter((a) => a.coordinator_id === coordinatorId).length;
@@ -420,7 +587,7 @@ function CoordinadoresTab() {
             <TableRow className="bg-secondary/30 hover:bg-secondary/30">
               <TableHead>Nome</TableHead>
               <TableHead>Contas vinculadas</TableHead>
-              {canEdit && <TableHead className="w-16 text-right">Ação</TableHead>}
+              {canEdit && <TableHead className="w-28 text-right">Ação</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -449,14 +616,28 @@ function CoordinadoresTab() {
                     </TableCell>
                     {canEdit && (
                       <TableCell className="text-right">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8"
-                          onClick={() => setEditing(coord)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            title="Editar coordenador"
+                            onClick={() => setEditing(coord)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          {isAdmin && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              title="Excluir coordenador"
+                              onClick={() => setDeleting(coord)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     )}
                   </TableRow>
@@ -470,6 +651,15 @@ function CoordinadoresTab() {
       <EditCoordinatorDialog
         coordinator={editing}
         onClose={() => setEditing(null)}
+      />
+      <DeleteConfirmationDialog
+        open={!!deleting}
+        title="Excluir coordenador"
+        description="O coordenador será removido definitivamente. As contas vinculadas continuarão existindo, mas ficarão sem coordenador."
+        itemName={deleting?.name ?? ""}
+        isPending={deleteMutation.isPending}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        onConfirm={() => deleting && deleteMutation.mutate(deleting)}
       />
     </>
   );

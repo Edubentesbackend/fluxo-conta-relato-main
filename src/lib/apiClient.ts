@@ -45,11 +45,19 @@ function buildUrl(path: string) {
   return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+async function fetchApi(path: string, options: RequestInit) {
+  try {
+    return await fetch(buildUrl(path), options);
+  } catch {
+    throw new Error("Nao foi possivel acessar a API. Verifique se o servidor esta rodando e tente novamente.");
+  }
+}
+
 async function refreshAccessToken() {
   const tokens = getStoredTokens();
   if (!tokens?.refreshToken) return null;
 
-  const response = await fetch(buildUrl("/auth/refresh"), {
+  const response = await fetchApi("/auth/refresh", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ refreshToken: tokens.refreshToken }),
@@ -74,15 +82,18 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const tokens = getStoredTokens();
 
   const requestHeaders: Record<string, string> = {
-    "content-type": "application/json",
     ...(headers || {}),
   };
+
+  if (body !== undefined) {
+    requestHeaders["content-type"] = "application/json";
+  }
 
   if (auth && tokens?.accessToken) {
     requestHeaders.authorization = `Bearer ${tokens.accessToken}`;
   }
 
-  const response = await fetch(buildUrl(path), {
+  const response = await fetchApi(path, {
     ...rest,
     headers: requestHeaders,
     body: body && typeof body !== "string" ? JSON.stringify(body) : body,
@@ -142,12 +153,16 @@ export const authApi = {
 };
 
 export const accountsApi = {
-  list: <T>() => apiRequest<T>("/accounts"),
+  list: <T>(includeArchived = false) =>
+    apiRequest<T>(`/accounts${queryString(includeArchived ? { include_archived: true } : undefined)}`),
   coordinators: <T>() => apiRequest<T>("/accounts/coordinators"),
   createCoordinator: <T>(body: unknown) => apiRequest<T>("/accounts/coordinators", { method: "POST", body }),
   updateCoordinator: <T>(id: string, body: unknown) => apiRequest<T>(`/accounts/coordinators/${id}`, { method: "PATCH", body }),
+  deleteCoordinator: <T>(id: string) => apiRequest<T>(`/accounts/coordinators/${id}`, { method: "DELETE" }),
   create: <T>(body: unknown) => apiRequest<T>("/accounts", { method: "POST", body }),
   update: <T>(id: string, body: unknown) => apiRequest<T>(`/accounts/${id}`, { method: "PATCH", body }),
+  delete: <T>(id: string) => apiRequest<T>(`/accounts/${id}`, { method: "DELETE" }),
+  restore: <T>(id: string) => apiRequest<T>(`/accounts/${id}/restore`, { method: "POST" }),
   importAccounts: <T>(body: unknown) => apiRequest<T>("/accounts/import", { method: "POST", body }),
 };
 

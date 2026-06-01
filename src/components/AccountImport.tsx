@@ -152,7 +152,7 @@ export const AccountImport: React.FC = () => {
   const queryClient = useQueryClient();
 
   const { data: projectCoordinators = [] } = useQuery({
-    queryKey: ['project-coordinators'],
+    queryKey: ['coordinators'],
     queryFn: async (): Promise<ProjectCoordinatorOption[]> => accountsApi.coordinators<ProjectCoordinatorOption[]>(),
   });
 
@@ -219,11 +219,11 @@ export const AccountImport: React.FC = () => {
     setIsCreatingCoordinator(true);
     try {
       const created = await accountsApi.createCoordinator<ProjectCoordinatorOption>({ name });
-      queryClient.setQueryData<ProjectCoordinatorOption[]>(['project-coordinators'], (current = []) => {
+      queryClient.setQueryData<ProjectCoordinatorOption[]>(['coordinators'], (current = []) => {
         if (current.some((coordinator) => coordinator.normalized_name === created.normalized_name)) return current;
         return [...current, created].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
       });
-      await queryClient.invalidateQueries({ queryKey: ['project-coordinators'] });
+      await queryClient.invalidateQueries({ queryKey: ['coordinators'] });
       setNewCoordinatorName('');
       toast({ title: 'Coordenador cadastrado', description: `${created.name} foi adicionado à lista` });
     } catch (error: any) {
@@ -306,7 +306,7 @@ export const AccountImport: React.FC = () => {
       }
 
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      queryClient.invalidateQueries({ queryKey: ['project-coordinators'] });
+      queryClient.invalidateQueries({ queryKey: ['coordinators'] });
       toast({
         title: 'Importação concluída!',
         description: `${result.imported} contas importadas com sucesso!${result.skipped > 0 ? ` (${result.skipped} ignoradas)` : ''}`,

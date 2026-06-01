@@ -60,16 +60,14 @@ export const NewReportsDashboard = () => {
   
   const { data: monthlyData, isLoading: monthlyLoading } = useMonthlyVolumes(filters, 12);
   const { data: accountSummaries, isLoading: summariesLoading } = useOptimizedAccountSummaries(filters);
-  const { data: accounts } = useAccounts();
+  const { data: accounts } = useAccounts(true);
   const { data: transactions, isLoading: transactionsLoading } = useTransactions(filters);
 
   // Account options for filters
   const accountOptions = useMemo(() => {
     return accounts?.map(account => ({
       value: account.id,
-      label: account.account_number 
-        ? `${account.name} (${account.account_number})`
-        : account.name
+      label: `${account.account_number ? `${account.name} (${account.account_number})` : account.name}${account.archived_at ? ' [Arquivada]' : ''}`
     })) || [];
   }, [accounts]);
 
@@ -165,20 +163,30 @@ export const NewReportsDashboard = () => {
       key: 'source_account_name' as keyof TransactionWithAccounts,
       label: 'Conta Origem',
       sortable: true,
-      render: (value: string) => (
-        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800">
-          {value || 'N/A'}
-        </Badge>
+      render: (value: string, item: TransactionWithAccounts) => (
+        <div className="flex flex-col gap-0.5">
+          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800">
+            {value || 'N/A'}
+          </Badge>
+          {item.source_account_number && (
+            <span className="text-xs text-muted-foreground font-mono">{item.source_account_number}</span>
+          )}
+        </div>
       )
     },
     {
       key: 'destination_account_name' as keyof TransactionWithAccounts,
       label: 'Conta Destino',
       sortable: true,
-      render: (value: string) => (
-        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800">
-          {value || 'N/A'}
-        </Badge>
+      render: (value: string, item: TransactionWithAccounts) => (
+        <div className="flex flex-col gap-0.5">
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800">
+            {value || 'N/A'}
+          </Badge>
+          {item.destination_account_number && (
+            <span className="text-xs text-muted-foreground font-mono">{item.destination_account_number}</span>
+          )}
+        </div>
       )
     },
     {

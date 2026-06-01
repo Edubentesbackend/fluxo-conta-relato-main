@@ -8,7 +8,7 @@ type CoordinatorLike = {
 
 type AccountLike = Pick<
   Account,
-  "id" | "name" | "description" | "accountNumber" | "accountType" | "coordinatorId" | "createdAt" | "updatedAt"
+  "id" | "name" | "description" | "accountNumber" | "accountType" | "coordinatorId" | "archivedAt" | "createdAt" | "updatedAt"
 > & {
   coordinator?: CoordinatorLike | null;
 };
@@ -21,6 +21,7 @@ export function serializeAccount(account: AccountLike) {
     account_number: account.accountNumber,
     account_type: account.accountType as AccountType,
     coordinator_id: account.coordinatorId,
+    archived_at: account.archivedAt?.toISOString() ?? null,
     coordinator_name: account.coordinator?.name ?? null,
     coordinator: account.coordinator
       ? {

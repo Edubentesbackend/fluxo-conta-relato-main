@@ -11,3 +11,11 @@ export function resolveAccountType(accountNumber: string, requestedType?: Accoun
 
   return requestedType ?? "projeto";
 }
+
+export function resolveAccountDeletionOutcome(accountNumber: string | null, linkedTransactions: number) {
+  if (accountNumber === ADM_ACCOUNT_NUMBER) {
+    throw badRequest(`A conta ADM ${ADM_ACCOUNT_NUMBER} nao pode ser excluida ou arquivada`, "ADM_ACCOUNT_REQUIRED");
+  }
+
+  return linkedTransactions > 0 ? "archived" as const : "deleted" as const;
+}

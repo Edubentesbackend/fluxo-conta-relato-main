@@ -26,6 +26,7 @@ export function buildApp() {
       callback(new Error("Origin not allowed"), false);
     },
     credentials: true,
+    methods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
   });
 
   app.register(jwt, { secret: env.JWT_SECRET });
@@ -71,6 +72,22 @@ export function buildApp() {
       reply.status(503).send({
         error: "Banco de dados indisponivel. Verifique se o PostgreSQL esta rodando em localhost:5432.",
         code: "DATABASE_UNAVAILABLE",
+      });
+      return;
+    }
+
+    if (
+      error &&
+      typeof error === "object" &&
+      "statusCode" in error &&
+      typeof error.statusCode === "number" &&
+      error.statusCode >= 400 &&
+      error.statusCode < 500
+    ) {
+      const requestError = error as { statusCode: number; message?: string; code?: string };
+      reply.status(requestError.statusCode).send({
+        error: requestError.message || "Requisicao invalida",
+        code: requestError.code || "REQUEST_ERROR",
       });
       return;
     }

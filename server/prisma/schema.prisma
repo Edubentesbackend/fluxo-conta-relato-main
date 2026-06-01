@@ -93,6 +93,7 @@ model Account {
   description             String?
   accountType             AccountType         @default(projeto) @map("account_type")
   coordinatorId           String?             @map("coordinator_id") @db.Uuid
+  archivedAt              DateTime?           @map("archived_at") @db.Timestamptz(6)
   createdAt               DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
   coordinator             ProjectCoordinator? @relation(fields: [coordinatorId], references: [id], onDelete: SetNull)
@@ -101,6 +102,7 @@ model Account {
 
   @@index([coordinatorId])
   @@index([accountType])
+  @@index([archivedAt])
   @@map("accounts")
 }
 

@@ -6,7 +6,7 @@ import {
   normalizeAccountNumber,
   normalizeCoordinatorName,
 } from "./account-normalization.js";
-import { resolveAccountType } from "./account-rules.js";
+import { resolveAccountDeletionOutcome, resolveAccountType } from "./account-rules.js";
 import type { AccountType, Prisma } from "@prisma/client";
 
 export interface CreateAccountInput {
@@ -61,8 +61,9 @@ async function findOrCreateCoordinator(tx: Prisma.TransactionClient, coordinator
   });
 }
 
-export async function listAccounts() {
+export async function listAccounts(includeArchived = false) {
   const accounts = await prisma.account.findMany({
+    where: includeArchived ? undefined : { archivedAt: null },
     include: { coordinator: true },
     orderBy: { name: "asc" },
   });
@@ -91,12 +92,12 @@ export async function updateProjectCoordinator(id: string, name: string) {
 
   if (!existing) throw notFound("Coordenador nao encontrado");
 
-  const conflict = await prisma.projectCoordinator.findFirst({
+  const conflictingCoordinator = await prisma.projectCoordinator.findFirst({
     where: { normalizedName: coordinator.normalizedName, NOT: { id } },
     select: { id: true },
   });
 
-  if (conflict) throw new Error("Coordenador com esse nome ja existe");
+  if (conflictingCoordinator) throw conflict("Coordenador com esse nome ja existe", "COORDINATOR_ALREADY_EXISTS");
 
   const updated = await prisma.projectCoordinator.update({
     where: { id },
@@ -148,9 +149,10 @@ export async function updateAccount(id: string, input: Partial<CreateAccountInpu
   return prisma.$transaction(async (tx) => {
     const existing = await tx.account.findUnique({
       where: { id },
-      select: { accountNumber: true, accountType: true },
+      select: { accountNumber: true, accountType: true, archivedAt: true },
     });
     if (!existing) throw notFound("Conta nao encontrada");
+    if (existing.archivedAt) throw conflict("Conta arquivada nao pode ser editada", "ACCOUNT_ARCHIVED");
 
     const shouldUpdateCoordinator = Object.prototype.hasOwnProperty.call(input, "coordinator_name");
     const coordinator = shouldUpdateCoordinator
@@ -173,6 +175,130 @@ export async function updateAccount(id: string, input: Partial<CreateAccountInpu
       include: { coordinator: true },
     });
     return serializeAccount(account);
+  });
+}
+
+interface AuditInput {
+  actorId: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  metadata?: Prisma.InputJsonValue;
+  ipAddress?: string;
+}
+
+async function createAuditLog(tx: Prisma.TransactionClient, input: AuditInput) {
+  await tx.auditLog.create({
+    data: {
+      userId: input.actorId,
+      action: input.action,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      metadata: input.metadata,
+      ipAddress: input.ipAddress,
+    },
+  });
+}
+
+export async function deleteAccount(id: string, actorId: string, ipAddress?: string) {
+  return prisma.$transaction(async (tx) => {
+    const account = await tx.account.findUnique({
+      where: { id },
+      select: { id: true, accountNumber: true, archivedAt: true },
+    });
+    if (!account) throw notFound("Conta nao encontrada");
+    if (account.archivedAt) throw conflict("Conta ja esta arquivada", "ACCOUNT_ALREADY_ARCHIVED");
+
+    const linkedTransactions = await tx.transaction.count({
+      where: {
+        OR: [
+          { sourceAccountId: id },
+          { destinationAccountId: id },
+        ],
+      },
+    });
+    const outcome = resolveAccountDeletionOutcome(account.accountNumber, linkedTransactions);
+
+    if (outcome === "archived") {
+      await tx.account.update({
+        where: { id },
+        data: { archivedAt: new Date() },
+      });
+    } else {
+      await tx.account.delete({ where: { id } });
+    }
+
+    await createAuditLog(tx, {
+      actorId,
+      action: outcome === "archived" ? "account.archived" : "account.deleted",
+      entityType: "account",
+      entityId: id,
+      metadata: { linked_transactions: linkedTransactions },
+      ipAddress,
+    });
+
+    return {
+      id,
+      outcome,
+      linked_transactions: linkedTransactions,
+    };
+  });
+}
+
+export async function restoreAccount(id: string, actorId: string, ipAddress?: string) {
+  return prisma.$transaction(async (tx) => {
+    const account = await tx.account.findUnique({
+      where: { id },
+      select: { id: true, archivedAt: true },
+    });
+    if (!account) throw notFound("Conta nao encontrada");
+    if (!account.archivedAt) throw conflict("Conta nao esta arquivada", "ACCOUNT_NOT_ARCHIVED");
+
+    await tx.account.update({
+      where: { id },
+      data: { archivedAt: null },
+    });
+
+    await createAuditLog(tx, {
+      actorId,
+      action: "account.restored",
+      entityType: "account",
+      entityId: id,
+      ipAddress,
+    });
+
+    return { id, outcome: "restored" as const };
+  });
+}
+
+export async function deleteProjectCoordinator(id: string, actorId: string, ipAddress?: string) {
+  return prisma.$transaction(async (tx) => {
+    const coordinator = await tx.projectCoordinator.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!coordinator) throw notFound("Coordenador nao encontrado");
+
+    const updated = await tx.account.updateMany({
+      where: { coordinatorId: id },
+      data: { coordinatorId: null },
+    });
+    await tx.projectCoordinator.delete({ where: { id } });
+
+    await createAuditLog(tx, {
+      actorId,
+      action: "project_coordinator.deleted",
+      entityType: "project_coordinator",
+      entityId: id,
+      metadata: { unlinked_accounts: updated.count },
+      ipAddress,
+    });
+
+    return {
+      id,
+      outcome: "deleted" as const,
+      unlinked_accounts: updated.count,
+    };
   });
 }
 

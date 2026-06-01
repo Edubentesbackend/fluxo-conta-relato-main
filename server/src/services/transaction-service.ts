@@ -86,17 +86,27 @@ async function nextTransactionIdentifier(tx: Prisma.TransactionClient) {
   return `${prefix}-${String(nextNumber).padStart(3, "0")}`;
 }
 
-async function assertAccountsExist(tx: Prisma.TransactionClient, sourceId: string, destinationId: string) {
+async function assertAccountsCanBeUsed(
+  tx: Prisma.TransactionClient,
+  sourceId: string,
+  destinationId: string,
+  allowArchived: boolean,
+) {
   if (sourceId === destinationId) {
     throw badRequest("A conta de origem deve ser diferente da conta de destino");
   }
 
-  const count = await tx.account.count({
+  const accounts = await tx.account.findMany({
     where: { id: { in: [sourceId, destinationId] } },
+    select: { id: true, archivedAt: true },
   });
 
-  if (count !== 2) {
+  if (accounts.length !== 2) {
     throw badRequest("Conta de origem ou destino nao encontrada");
+  }
+
+  if (!allowArchived && accounts.some((account) => account.archivedAt)) {
+    throw badRequest("Conta arquivada nao pode receber novas movimentacoes", "ACCOUNT_ARCHIVED");
   }
 }
 
@@ -145,7 +155,12 @@ export async function createTransaction(input: CreateTransactionInput, createdBy
   });
 
   return prisma.$transaction(async (tx) => {
-    await assertAccountsExist(tx, input.source_account_id, input.destination_account_id);
+    await assertAccountsCanBeUsed(
+      tx,
+      input.source_account_id,
+      input.destination_account_id,
+      input.transaction_type === "devolucao",
+    );
 
     let status: "pending_return" | "completed" = "completed";
 
