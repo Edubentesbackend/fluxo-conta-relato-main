@@ -1,11 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import { useQueryClient } from '@tanstack/react-query';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { BarChart3, FileText, TrendingUp, TrendingDown, Filter, RefreshCw, Download, Play, Eye, Settings, Bell } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { BarChart3, FileText, TrendingUp, TrendingDown, Filter, RefreshCw, Download, Play, Eye, Settings, Bell, BotOff } from 'lucide-react';
+import { ApiRequestError } from '@/lib/apiClient';
+import { useAuth } from '@/contexts/AuthContext';
 
 import { KPICards } from './dashboard/KPICards';
 import { ActivityChart } from './dashboard/ActivityChart';
@@ -24,7 +29,7 @@ import { ExportOptions } from '@/components/dashboard/ExportOptions';
 import { GuidedTour, TourTrigger } from '@/components/ui/guided-tour';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { HelpCenter } from '@/components/ui/help-center';
-import { PWAInstaller } from '@/components/ui/pwa-installer';
+import { useToast } from '@/hooks/use-toast';
 import { AdvancedFilters, AdvancedFiltersData } from './filters/AdvancedFilters';
 import { InteractiveTable } from './tables/InteractiveTable';
 import { ReturnsTracker } from '@/components/reports/ReturnsTracker';
@@ -32,11 +37,10 @@ import { SegregatedBalanceReport } from '@/components/reports/SegregatedBalanceR
 import { LoansDashboard } from '@/components/reports/LoansDashboard';
 
 import { useTransactionInsights, useMonthlyVolumes, useOptimizedAccountSummaries, useExecutiveInsights } from '@/hooks/useReportsData';
-import { useTransactions, TransactionWithAccounts } from '@/hooks/useTransactions';
+import { useTransactions, useVoidTransaction, TransactionWithAccounts } from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
 import { formatCurrency } from '@/utils/currency';
-import { TRANSACTION_TYPES, Transaction } from '@/types/database';
-import { exportAccountSummariesToExcel, exportTransactionsToExcel, exportInsightsToExcel, exportAccountSummariesToPDF, exportInsightsToPDF } from './export/ExportHelpers';
+import { TRANSACTION_TYPES } from '@/types/database';
 
 export const NewReportsDashboard = () => {
   const [filters, setFilters] = useState<AdvancedFiltersData>({});
@@ -44,7 +48,15 @@ export const NewReportsDashboard = () => {
   const [tourOpen, setTourOpen] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<DashboardProfile>("ceo");
   const [showFilters, setShowFilters] = useState(false);
+  const [voidDialogOpen, setVoidDialogOpen] = useState(false);
+  const [voidReason, setVoidReason] = useState('');
+  const [transactionsPendingVoid, setTransactionsPendingVoid] = useState<TransactionWithAccounts[]>([]);
+  const clearTransactionSelectionRef = useRef<(() => void) | null>(null);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const voidTransactionMutation = useVoidTransaction();
+  const canVoidTransactions = Boolean(user && ['manager', 'admin'].includes(user.role));
   
   const handleAccountClick = (accountId: string) => {
     setFilters(prev => ({ ...prev, accountId }));
@@ -53,10 +65,11 @@ export const NewReportsDashboard = () => {
 
   // Data hooks
   const { data: insights, isLoading: insightsLoading, refetch: refetchInsights } = useTransactionInsights(filters);
-  const { data: executiveInsights, isLoading: executiveInsightsLoading } = useExecutiveInsights(
+  const { data: executiveInsights, isLoading: executiveInsightsLoading, error: executiveInsightsError } = useExecutiveInsights(
     filters,
     selectedProfile === 'ceo'
   );
+  const aiNotConfigured = executiveInsightsError instanceof ApiRequestError && executiveInsightsError.code === 'CLAUDE_NOT_CONFIGURED';
   
   const { data: monthlyData, isLoading: monthlyLoading } = useMonthlyVolumes(filters, 12);
   const { data: accountSummaries, isLoading: summariesLoading } = useOptimizedAccountSummaries(filters);
@@ -229,6 +242,83 @@ export const NewReportsDashboard = () => {
     queryClient.invalidateQueries({ queryKey: ['executive-insights-ai'] });
   };
 
+  const handleRequestVoidTransactions = (
+    selectedTransactions: TransactionWithAccounts[],
+    clearSelection: () => void,
+  ) => {
+    if (!selectedTransactions.length) return;
+    clearTransactionSelectionRef.current = clearSelection;
+    setTransactionsPendingVoid(selectedTransactions);
+    setVoidReason('');
+    setVoidDialogOpen(true);
+  };
+
+  const handleCloseVoidDialog = (open: boolean) => {
+    if (voidTransactionMutation.isPending) return;
+    setVoidDialogOpen(open);
+    if (!open) {
+      setVoidReason('');
+      setTransactionsPendingVoid([]);
+      clearTransactionSelectionRef.current = null;
+    }
+  };
+
+  const handleConfirmVoidTransactions = async () => {
+    const reason = voidReason.trim();
+    if (!reason) {
+      toast({
+        title: 'Motivo obrigatorio',
+        description: 'Informe por que a transacao deve ser apagada/cancelada.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      for (const transaction of transactionsPendingVoid) {
+        await voidTransactionMutation.mutateAsync({
+          id: transaction.id,
+          payload: { reason },
+        });
+      }
+
+      toast({
+        title: transactionsPendingVoid.length === 1 ? 'Transacao apagada' : 'Transacoes apagadas',
+        description: 'O registro foi cancelado com auditoria e saiu dos relatorios ativos.',
+      });
+
+      clearTransactionSelectionRef.current?.();
+      setVoidDialogOpen(false);
+      setVoidReason('');
+      setTransactionsPendingVoid([]);
+      clearTransactionSelectionRef.current = null;
+    } catch (error) {
+      toast({
+        title: 'Erro ao apagar transacao',
+        description: error instanceof ApiRequestError
+          ? error.message
+          : 'Nao foi possivel concluir o cancelamento. Tente novamente.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleTourStart = () => {
+    setActiveTab('dashboard');
+    setSelectedProfile('ceo');
+    window.setTimeout(() => setTourOpen(true), 0);
+  };
+
+  const handleExecutiveExport = async (optionId: string) => {
+    if (!insights || !monthlyData) return;
+    const helpers = await import('./export/ExportHelpers');
+    if (optionId === 'pdf-executive') {
+      helpers.exportInsightsToPDF(insights, monthlyData);
+    } else if (optionId === 'excel-detailed') {
+      helpers.exportInsightsToExcel(insights, monthlyData);
+    }
+  };
+
   const activeFiltersCount = Object.values(filters).filter(Boolean).length;
 
   // Tour steps configuration
@@ -311,7 +401,7 @@ export const NewReportsDashboard = () => {
             <div className="flex flex-wrap items-center gap-2">
               <ThemeToggle variant="minimal" />
               <HelpCenter />
-              <TourTrigger onStart={() => setTourOpen(true)} />
+              <TourTrigger onStart={handleTourStart} />
               <Button
                 variant="ghost"
                 size="sm"
@@ -321,15 +411,9 @@ export const NewReportsDashboard = () => {
                 <Filter className="h-4 w-4" />
                 Filtros
               </Button>
-              <ExportOptions 
-                onExport={(option) => {
-                  if (option.id === 'pdf-executive' && insights && monthlyData) {
-                    exportInsightsToPDF(insights, monthlyData);
-                  } else if (option.id === 'excel-detailed' && insights && monthlyData) {
-                    exportInsightsToExcel(insights, monthlyData);
-                  }
-                }} 
-              />
+              <div data-tour="export-options">
+                <ExportOptions onExport={(option) => void handleExecutiveExport(option.id)} />
+              </div>
               <Button 
                 className="gradient-primary text-white shadow-soft"
                 size="sm" 
@@ -411,6 +495,20 @@ export const NewReportsDashboard = () => {
               onProfileChange={setSelectedProfile}
             />
           </motion.div>
+
+          {/* AI not configured notice */}
+          {aiNotConfigured && selectedProfile === 'ceo' && (
+            <Card className="border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+              <CardContent className="flex items-center gap-3 p-4 text-amber-700 dark:text-amber-400">
+                <BotOff className="h-5 w-5 shrink-0" />
+                <p className="text-sm">
+                  <strong>Insights de IA não disponíveis.</strong> Configure a variável{" "}
+                  <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">ANTHROPIC_API_KEY</code>{" "}
+                  no arquivo <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">.env</code> e reinicie o servidor.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Render different dashboard based on selected profile */}
           {selectedProfile === 'ceo' && (
@@ -494,6 +592,10 @@ export const NewReportsDashboard = () => {
             />
           </div>
 
+          <div data-tour="activity-feed">
+            <ActivityFeed />
+          </div>
+
           {/* Security & API Status - Common to all profiles */}
           <div className="grid gap-6 lg:grid-cols-2 animate-fade-in-delayed" data-tour="security-indicator">
             <SecurityIndicator />
@@ -515,8 +617,11 @@ export const NewReportsDashboard = () => {
                 data={accountSummaries ?? []}
                 columns={accountSummaryColumns}
                 isLoading={summariesLoading}
+                selectionDescription="Selecione linhas para exportar."
                 onExport={(selectedData) => {
-                  exportAccountSummariesToExcel(selectedData.length > 0 ? selectedData : accountSummaries ?? []);
+                  void import('./export/ExportHelpers').then(({ exportAccountSummariesToExcel }) => {
+                    exportAccountSummariesToExcel(selectedData.length > 0 ? selectedData : accountSummaries ?? []);
+                  });
                 }}
               />
             </CardContent>
@@ -542,8 +647,13 @@ export const NewReportsDashboard = () => {
                 data={transactions ?? []}
                 columns={transactionColumns}
                 isLoading={transactionsLoading}
+                selectionDescription="Selecione linhas para exportar ou apagar."
+                onDeleteSelected={canVoidTransactions ? handleRequestVoidTransactions : undefined}
+                deleteLabel="Apagar"
                 onExport={(selectedData) => {
-                  exportTransactionsToExcel(selectedData.length > 0 ? selectedData : transactions ?? []);
+                  void import('./export/ExportHelpers').then(({ exportTransactionsToExcel }) => {
+                    exportTransactionsToExcel(selectedData.length > 0 ? selectedData : transactions ?? []);
+                  });
                 }}
               />
             </CardContent>
@@ -555,14 +665,80 @@ export const NewReportsDashboard = () => {
         </TabsContent>
       </Tabs>
 
+      <Dialog open={voidDialogOpen} onOpenChange={handleCloseVoidDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {transactionsPendingVoid.length === 1 ? 'Apagar transacao' : 'Apagar transacoes'}
+            </DialogTitle>
+            <DialogDescription>
+              A transacao nao sera removida fisicamente do banco. Ela sera cancelada com motivo,
+              auditoria e deixara de entrar nos relatorios ativos.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+              <p className="font-medium">
+                {transactionsPendingVoid.length} selecionada{transactionsPendingVoid.length === 1 ? '' : 's'}
+              </p>
+              <div className="mt-2 max-h-28 space-y-1 overflow-y-auto text-xs text-muted-foreground">
+                {transactionsPendingVoid.map((transaction) => (
+                  <div key={transaction.id} className="flex items-center justify-between gap-3">
+                    <span className="font-mono">{transaction.unique_identifier}</span>
+                    <span>{formatCurrency(Number(transaction.amount))}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="void-reason">Motivo do cancelamento</Label>
+              <Textarea
+                id="void-reason"
+                value={voidReason}
+                onChange={(event) => setVoidReason(event.target.value)}
+                placeholder="Ex.: lancamento duplicado, valor incorreto ou transacao criada por engano"
+                disabled={voidTransactionMutation.isPending}
+              />
+              <p className="text-xs text-muted-foreground">
+                Esse motivo fica registrado na auditoria da transacao.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => handleCloseVoidDialog(false)}
+              disabled={voidTransactionMutation.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleConfirmVoidTransactions()}
+              disabled={voidTransactionMutation.isPending || !voidReason.trim()}
+            >
+              {voidTransactionMutation.isPending ? 'Apagando...' : 'Apagar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <GuidedTour 
         steps={tourSteps}
         isOpen={tourOpen} 
         onClose={() => setTourOpen(false)}
         onComplete={() => console.log('Tour completed!')}
+        onMissingTarget={() => {
+          toast({
+            title: 'Tour indisponivel',
+            description: 'Nao foi possivel localizar a area desta etapa. Tente novamente.',
+            variant: 'destructive',
+          });
+        }}
       />
-      
-      <PWAInstaller />
     </motion.div>
   );
 };

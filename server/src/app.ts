@@ -1,6 +1,10 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import staticPlugin from "@fastify/static";
 import jwt from "@fastify/jwt";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
 import { env, corsOrigins } from "./env.js";
@@ -14,19 +18,47 @@ import { reportRoutes } from "./routes/reports.js";
 import { aiRoutes } from "./routes/ai.js";
 import { statusRoutes } from "./routes/status.js";
 
+const currentDir = dirname(fileURLToPath(import.meta.url));
+
+function findFrontendDist() {
+  const candidates = [
+    resolve(process.cwd(), "dist"),
+    resolve(currentDir, "..", "..", "dist"),
+    resolve(currentDir, "..", "..", "..", "dist"),
+  ];
+
+  return candidates.find((candidate) => existsSync(resolve(candidate, "index.html")));
+}
+
+function isStaticAssetRequest(url: string) {
+  const pathname = url.split("?")[0] || "/";
+
+  return (
+    pathname.startsWith("/assets/") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/manifest.json" ||
+    pathname === "/robots.txt" ||
+    pathname === "/sw.js" ||
+    /\.(?:js|css|map|json|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf)$/i.test(pathname)
+  );
+}
+
 export function buildApp() {
   const app = Fastify({ logger: true });
 
   app.register(cors, {
-    origin: (origin, callback) => {
-      if (!origin || corsOrigins.includes(origin)) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error("Origin not allowed"), false);
-    },
+    origin: corsOrigins.length > 0 ? corsOrigins : false,
     credentials: true,
     methods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
+  });
+
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (request.url.startsWith("/api/")) {
+      reply.header("cache-control", "no-store");
+    } else if (request.url === "/" || request.url.endsWith(".html")) {
+      reply.header("cache-control", "no-store");
+    }
+    return payload;
   });
 
   app.register(jwt, { secret: env.JWT_SECRET });
@@ -39,6 +71,31 @@ export function buildApp() {
   app.register(transactionRoutes, { prefix: "/api/transactions" });
   app.register(reportRoutes, { prefix: "/api/reports" });
   app.register(aiRoutes, { prefix: "/api/ai" });
+
+  const frontendDist = findFrontendDist();
+  if (frontendDist) {
+    app.register(staticPlugin, {
+      root: frontendDist,
+      prefix: "/",
+      cacheControl: false,
+      setHeaders: (response, filePath) => {
+        const shouldRevalidate = filePath.endsWith("index.html") || filePath.endsWith("sw.js");
+        response.setHeader(
+          "cache-control",
+          shouldRevalidate ? "no-store" : "public, max-age=31536000, immutable",
+        );
+      },
+    });
+  }
+
+  app.setNotFoundHandler((request, reply) => {
+    if (request.url.startsWith("/api/") || !frontendDist || isStaticAssetRequest(request.url)) {
+      reply.status(404).send({ error: "Rota nao encontrada", code: "NOT_FOUND" });
+      return;
+    }
+
+    reply.header("cache-control", "no-store").sendFile("index.html", { cacheControl: false });
+  });
 
   app.setErrorHandler((error, request, reply) => {
     request.log.error(error);

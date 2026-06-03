@@ -8,6 +8,7 @@ async function main() {
   const email = process.env.ADMIN_EMAIL || "admin@local.dev";
   const password = process.env.ADMIN_PASSWORD;
   const name = process.env.ADMIN_NAME || "Administrador";
+  const username = process.env.ADMIN_USERNAME || "admin";
 
   if (!password) {
     throw new Error("Defina ADMIN_PASSWORD temporariamente ao rodar npm.cmd run prisma:seed");
@@ -18,12 +19,14 @@ async function main() {
   const user = await prisma.user.upsert({
     where: { email },
     update: {
+      username,
       name,
       role: "admin",
       isActive: true,
     },
     create: {
       email,
+      username,
       name,
       role: "admin",
       isActive: true,
@@ -49,7 +52,7 @@ async function main() {
     },
   });
 
-  console.log(`Admin user ready: ${email}`);
+  console.log(`Admin user ready: ${email} (username: ${username})`);
 }
 
 main()

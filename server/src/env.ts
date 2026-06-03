@@ -4,8 +4,8 @@ import { z } from "zod";
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   API_HOST: z.string().default("0.0.0.0"),
-  API_PORT: z.coerce.number().int().positive().default(3001),
-  API_CORS_ORIGIN: z.string().default("http://localhost:8080"),
+  API_PORT: z.coerce.number().int().positive().default(8080),
+  API_CORS_ORIGIN: z.string().default(""),
   JWT_SECRET: z.string().min(12),
   JWT_EXPIRES_IN: z.string().default("15m"),
   REFRESH_TOKEN_DAYS: z.coerce.number().int().positive().default(30),

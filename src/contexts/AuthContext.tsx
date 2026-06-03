@@ -1,11 +1,20 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { authApi, AuthUser, clearStoredTokens, getStoredTokens, setStoredTokens } from "@/lib/apiClient";
+import {
+  authApi,
+  AuthUser,
+  RegisterInput,
+  clearStoredTokens,
+  getStoredTokens,
+  isUnauthorizedError,
+  setStoredTokens,
+} from "@/lib/apiClient";
 
 interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
+  register: (data: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -28,8 +37,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const response = await authApi.me();
         if (!cancelled) setUser(response.user);
-      } catch {
-        clearStoredTokens();
+      } catch (error) {
+        if (isUnauthorizedError(error)) clearStoredTokens();
         if (!cancelled) setUser(null);
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -50,8 +59,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     isLoading,
     isAuthenticated: !!user,
-    login: async (email, password) => {
-      const response = await authApi.login(email, password);
+    login: async (username, password) => {
+      const response = await authApi.login(username, password);
+      setStoredTokens({
+        accessToken: response.accessToken,
+        refreshToken: response.refreshToken,
+      });
+      setUser(response.user);
+    },
+    register: async (data) => {
+      const response = await authApi.register(data);
       setStoredTokens({
         accessToken: response.accessToken,
         refreshToken: response.refreshToken,

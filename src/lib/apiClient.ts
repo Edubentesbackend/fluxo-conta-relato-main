@@ -1,13 +1,36 @@
-import { LoanReportFilters, TransactionType } from "@/types/database";
+import { LoanReportFilters, LoanSettlementFilters, LoanSettlementReviewStatus, TransactionType } from "@/types/database";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:3001/api").replace(/\/$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
+const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 10_000);
 const TOKEN_STORAGE_KEY = "fluxo_conta_relato_tokens";
+const API_UNAVAILABLE_EVENT = "fluxo-api-unavailable";
+const API_AVAILABLE_EVENT = "fluxo-api-available";
 
 export interface AuthUser {
   id: string;
+  username: string;
   email: string;
   name: string;
   role: "admin" | "manager" | "analyst" | "viewer";
+}
+
+export interface UserListItem {
+  id: string;
+  username: string;
+  email: string;
+  name: string;
+  role: "admin" | "manager" | "analyst" | "viewer";
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RegisterInput {
+  name: string;
+  username: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
 }
 
 export interface AuthTokens {
@@ -19,6 +42,47 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
   auth?: boolean;
   skipRefresh?: boolean;
+}
+
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+    public readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
+export function isUnauthorizedError(error: unknown) {
+  return error instanceof ApiRequestError && error.status === 401;
+}
+
+function markApiUnavailable(message: string) {
+  window.dispatchEvent(new CustomEvent(API_UNAVAILABLE_EVENT, { detail: { message } }));
+}
+
+function markApiAvailable() {
+  window.dispatchEvent(new Event(API_AVAILABLE_EVENT));
+}
+
+function normalizeHeaders(headers?: HeadersInit) {
+  const normalized: Record<string, string> = {};
+
+  if (!headers) return normalized;
+  if (headers instanceof Headers) {
+    headers.forEach((value, key) => {
+      normalized[key] = value;
+    });
+    return normalized;
+  }
+  if (Array.isArray(headers)) {
+    for (const [key, value] of headers) normalized[key] = value;
+    return normalized;
+  }
+
+  return { ...headers };
 }
 
 export function getStoredTokens(): AuthTokens | null {
@@ -46,12 +110,33 @@ function buildUrl(path: string) {
 }
 
 async function fetchApi(path: string, options: RequestInit) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
   try {
-    return await fetch(buildUrl(path), options);
-  } catch {
-    throw new Error("Nao foi possivel acessar a API. Verifique se o servidor esta rodando e tente novamente.");
+    const response = await fetch(buildUrl(path), { ...options, signal: controller.signal });
+    if (response.status < 500) markApiAvailable();
+    return response;
+  } catch (error) {
+    const message = error instanceof DOMException && error.name === "AbortError"
+      ? "A API demorou para responder. Tente novamente."
+      : "Nao foi possivel acessar a API. Verifique se o servidor esta rodando e tente novamente.";
+    markApiUnavailable(message);
+    throw new ApiRequestError(message, 0, "API_UNAVAILABLE");
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
+
+async function buildResponseError(response: Response) {
+  const errorBody = await response.json().catch(() => null);
+  const message = errorBody?.error || `Erro HTTP ${response.status}`;
+  const code = errorBody?.code;
+  if (response.status >= 500 && code !== 'CLAUDE_NOT_CONFIGURED') markApiUnavailable(message);
+  return new ApiRequestError(message, response.status, code);
+}
+
+let pendingRefresh: Promise<AuthTokens | null> | null = null;
 
 async function refreshAccessToken() {
   const tokens = getStoredTokens();
@@ -63,10 +148,11 @@ async function refreshAccessToken() {
     body: JSON.stringify({ refreshToken: tokens.refreshToken }),
   });
 
-  if (!response.ok) {
+  if (response.status === 401) {
     clearStoredTokens();
     return null;
   }
+  if (!response.ok) throw await buildResponseError(response);
 
   const data = await response.json();
   const nextTokens = {
@@ -81,9 +167,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const { auth = true, skipRefresh = false, headers, body, ...rest } = options;
   const tokens = getStoredTokens();
 
-  const requestHeaders: Record<string, string> = {
-    ...(headers || {}),
-  };
+  const requestHeaders = normalizeHeaders(headers);
 
   if (body !== undefined) {
     requestHeaders["content-type"] = "application/json";
@@ -93,29 +177,44 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     requestHeaders.authorization = `Bearer ${tokens.accessToken}`;
   }
 
+  const requestBody: BodyInit | undefined = body === undefined
+    ? undefined
+    : typeof body === "string"
+      ? body
+      : JSON.stringify(body);
+
   const response = await fetchApi(path, {
     ...rest,
     headers: requestHeaders,
-    body: body && typeof body !== "string" ? JSON.stringify(body) : body,
+    body: requestBody,
   });
 
   if (response.status === 401 && auth && !skipRefresh) {
-    const refreshed = await refreshAccessToken();
+    if (!pendingRefresh) {
+      pendingRefresh = refreshAccessToken().finally(() => { pendingRefresh = null; });
+    }
+    const refreshed = await pendingRefresh;
     if (refreshed?.accessToken) {
       return apiRequest<T>(path, { ...options, skipRefresh: true });
     }
   }
 
   if (!response.ok) {
-    const errorBody = await response.json().catch(() => null);
-    throw new Error(errorBody?.error || `Erro HTTP ${response.status}`);
+    throw await buildResponseError(response);
   }
 
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
-function queryString(params?: Record<string, unknown>) {
+export async function probeApiAvailability() {
+  const response = await fetchApi("/health/ready", { method: "GET" });
+  if (!response.ok) throw await buildResponseError(response);
+  markApiAvailable();
+  return true;
+}
+
+function queryString(params?: object) {
   if (!params) return "";
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -138,11 +237,17 @@ export interface TransactionFilters {
 }
 
 export const authApi = {
-  login: (email: string, password: string) =>
+  login: (username: string, password: string) =>
     apiRequest<{ accessToken: string; refreshToken: string; user: AuthUser }>("/auth/login", {
       method: "POST",
       auth: false,
-      body: { email, password },
+      body: { username, password },
+    }),
+  register: (data: RegisterInput) =>
+    apiRequest<{ accessToken: string; refreshToken: string; user: AuthUser }>("/auth/register", {
+      method: "POST",
+      auth: false,
+      body: data,
     }),
   me: () => apiRequest<{ user: AuthUser }>("/auth/me"),
   logout: (refreshToken?: string) =>
@@ -150,6 +255,12 @@ export const authApi = {
       method: "POST",
       body: { refreshToken },
     }),
+};
+
+export const usersApi = {
+  list: () => apiRequest<UserListItem[]>("/users", { auth: true }),
+  update: (id: string, data: { role?: string; isActive?: boolean }) =>
+    apiRequest<UserListItem>(`/users/${id}`, { method: "PATCH", auth: true, body: data }),
 };
 
 export const accountsApi = {
@@ -171,6 +282,10 @@ export const transactionsApi = {
   create: <T>(body: unknown) => apiRequest<T>("/transactions", { method: "POST", body }),
   createReturn: <T>(id: string, body: unknown) =>
     apiRequest<T>(`/transactions/${id}/returns`, { method: "POST", body }),
+  update: <T>(id: string, body: unknown) =>
+    apiRequest<T>(`/transactions/${id}`, { method: "PATCH", body }),
+  void: <T>(id: string, body: unknown) =>
+    apiRequest<T>(`/transactions/${id}`, { method: "DELETE", body }),
 };
 
 export const reportsApi = {
@@ -190,6 +305,13 @@ export const reportsApi = {
     apiRequest<T>(`/reports/adm-position/export${queryString(filters)}`),
   interProjectLoans: <T>(filters?: LoanReportFilters) =>
     apiRequest<T>(`/reports/inter-project-loans${queryString(filters)}`),
+  loanSettlements: <T>(filters?: LoanSettlementFilters) =>
+    apiRequest<T>(`/reports/loan-settlements${queryString(filters)}`),
+  reviewLoanSettlement: <T>(
+    loanId: string,
+    body: { reviewStatus: LoanSettlementReviewStatus; reason: string; notes?: string },
+  ) =>
+    apiRequest<T>(`/reports/loan-settlements/${loanId}/review`, { method: "POST", body }),
 };
 
 export const aiApi = {

@@ -15,6 +15,7 @@ dist-ssr
 bun.lockb
 server/tmp
 server/postgres-data
+server/backups
 server/postgres.log
 
 # Editor directories and files

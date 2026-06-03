@@ -20,6 +20,7 @@ export function CEODashboard({ insights, monthlyData, transactions, isLoading, a
   return (
     <div className="space-y-6" data-tour="ceo-dashboard">
       <motion.div
+        data-tour="kpi-cards"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="grid gap-6 md:grid-cols-2 lg:grid-cols-4"
@@ -78,7 +79,7 @@ export function CEODashboard({ insights, monthlyData, transactions, isLoading, a
         aiLoading={aiLoading}
       />
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2" data-tour="charts">
         <ActivityChart 
           data={monthlyData} 
           isLoading={isLoading}

@@ -10,6 +10,8 @@ interface KPICardsProps {
   isLoading?: boolean;
 }
 
+type Trend = 'up' | 'down' | 'neutral';
+
 // ─── Loading skeleton ──────────────────────────────────────────────────────────
 
 const KPISkeleton = () => (
@@ -29,7 +31,7 @@ const KPISkeleton = () => (
 
 // ─── Trend badge ───────────────────────────────────────────────────────────────
 
-const TrendBadge: React.FC<{ trend: 'up' | 'down' | 'neutral'; value?: string }> = ({ trend, value }) => {
+const TrendBadge: React.FC<{ trend: Trend; value?: string }> = ({ trend, value }) => {
   if (trend === 'up') return (
     <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success border border-success/20">
       <TrendingUp className="h-3 w-3" />
@@ -49,6 +51,10 @@ const TrendBadge: React.FC<{ trend: 'up' | 'down' | 'neutral'; value?: string }>
     </span>
   );
 };
+
+function isPositiveSparkline(trend: Trend) {
+  return trend !== 'down';
+}
 
 // ─── Fake sparklines based on total ───────────────────────────────────────────
 
@@ -167,7 +173,7 @@ export const KPICards = ({ insights, isLoading }: KPICardsProps) => {
               <TrendSparkline
                 data={kpi.sparkData}
                 color={kpi.sparkColor}
-                positive={kpi.trend !== 'down'}
+                positive={isPositiveSparkline(kpi.trend)}
               />
             </div>
 

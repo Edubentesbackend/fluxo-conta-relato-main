@@ -1,5 +1,4 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertCircle,
   CheckCircle2,
@@ -324,27 +323,12 @@ export const AccountImport: React.FC = () => {
     }
   };
 
-  const slideVariants = {
-    enter: (dir: number) => ({ x: dir > 0 ? 30 : -30, opacity: 0 }),
-    center: { x: 0, opacity: 1 },
-    exit: (dir: number) => ({ x: dir > 0 ? -30 : 30, opacity: 0 }),
-  };
-
   return (
     <Card className="w-full border border-border/60 shadow-card rounded-2xl overflow-hidden">
       <CardContent className="p-7">
         <StepBar current={step} />
 
-        <AnimatePresence mode="wait" custom={step}>
-          <motion.div
-            key={step}
-            custom={1}
-            variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
-          >
+        <div>
             {/* ── Step 0: Upload ─────────────────────────────────────────── */}
             {step === 0 && (
               <div className="space-y-6">
@@ -406,9 +390,11 @@ export const AccountImport: React.FC = () => {
                     type="button"
                     variant="outline"
                     onClick={() => { setAccounts([emptyAccount()]); setStep(1); }}
-                    className="flex-1 rounded-xl border-2 gap-2"
+                    className="min-h-11 flex-1 rounded-xl border-2 gap-2 px-4 whitespace-normal"
+                    translate="no"
                   >
-                    <Plus className="h-4 w-4" /> Adicionar manualmente
+                    <Plus className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 text-center leading-tight">Adicionar manualmente</span>
                   </Button>
                   <Button
                     type="button"
@@ -671,8 +657,7 @@ export const AccountImport: React.FC = () => {
                 </div>
               </div>
             )}
-          </motion.div>
-        </AnimatePresence>
+        </div>
       </CardContent>
     </Card>
   );

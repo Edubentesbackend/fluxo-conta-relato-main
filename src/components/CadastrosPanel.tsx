@@ -3,11 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Pencil, Search, Building2, Users, X, RotateCcw, Trash2 } from "lucide-react";
+import { Pencil, Search, Building2, Users, UserCog, X, RotateCcw, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { accountsApi } from "@/lib/apiClient";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/contexts/AuthContext";
+import { UserManagementPanel } from "@/components/UserManagementPanel";
 import { Account, ProjectCoordinator, ACCOUNT_TYPE_LABELS, AccountType } from "@/types/database";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -667,15 +668,18 @@ function CoordinadoresTab() {
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
-type SubTab = "contas" | "coordenadores";
-
-const subTabs: { id: SubTab; label: string; icon: React.ElementType }[] = [
-  { id: "contas", label: "Contas", icon: Building2 },
-  { id: "coordenadores", label: "Coordenadores", icon: Users },
-];
+type SubTab = "contas" | "coordenadores" | "usuarios";
 
 export function CadastrosPanel() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [activeSubTab, setActiveSubTab] = useState<SubTab>("contas");
+
+  const subTabs: { id: SubTab; label: string; icon: React.ElementType }[] = [
+    { id: "contas", label: "Contas", icon: Building2 },
+    { id: "coordenadores", label: "Coordenadores", icon: Users },
+    ...(isAdmin ? [{ id: "usuarios" as SubTab, label: "Usuários", icon: UserCog }] : []),
+  ];
 
   return (
     <motion.div
@@ -709,6 +713,7 @@ export function CadastrosPanel() {
       {/* Content */}
       {activeSubTab === "contas" && <ContasTab />}
       {activeSubTab === "coordenadores" && <CoordinadoresTab />}
+      {activeSubTab === "usuarios" && isAdmin && <UserManagementPanel />}
     </motion.div>
   );
 }

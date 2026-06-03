@@ -6,7 +6,11 @@ import {
   createReturnTransaction,
   createTransaction,
   listTransactions,
+  updateTransaction,
+  voidTransaction,
   type TransactionFilters,
+  type UpdateTransactionInput,
+  type VoidTransactionInput,
 } from "../services/transaction-service.js";
 
 const transactionTypeSchema = z.enum([
@@ -43,6 +47,16 @@ const createReturnSchema = z.object({
   transaction_date: z.string().datetime(),
   amount: z.coerce.number().positive(),
   description: z.string().min(1),
+});
+
+const updateTransactionSchema = z.object({
+  amount: z.coerce.number().positive(),
+  description: z.string().trim().min(1).optional(),
+  reason: z.string().trim().min(1),
+});
+
+const voidTransactionSchema = z.object({
+  reason: z.string().trim().min(1),
 });
 
 function parseFilters(query: unknown): TransactionFilters {
@@ -87,5 +101,19 @@ export async function transactionRoutes(app: FastifyInstance) {
     }, user.sub);
     reply.code(201);
     return transaction;
+  });
+
+  app.patch("/:id", { preHandler: app.requireRoles(["manager"]) }, async (request) => {
+    const user = request.user as AuthUser;
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const input = updateTransactionSchema.parse(request.body) as UpdateTransactionInput;
+    return updateTransaction(params.id, input, user.sub, request.ip);
+  });
+
+  app.delete("/:id", { preHandler: app.requireRoles(["manager"]) }, async (request) => {
+    const user = request.user as AuthUser;
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const input = voidTransactionSchema.parse(request.body) as VoidTransactionInput;
+    return voidTransaction(params.id, input, user.sub, request.ip);
   });
 }

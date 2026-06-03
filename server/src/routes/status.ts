@@ -3,9 +3,18 @@ import { env } from "../env.js";
 import { prisma } from "../lib/prisma.js";
 
 export async function statusRoutes(app: FastifyInstance) {
+  app.get("/health/live", async () => {
+    return { ok: true, service: "fluxo-conta-relato-api" };
+  });
+
+  app.get("/health/ready", async () => {
+    await prisma.$queryRaw`SELECT 1`;
+    return { ok: true, service: "fluxo-conta-relato-api", database: "ready" };
+  });
+
   app.get("/health", async () => {
     await prisma.$queryRaw`SELECT 1`;
-    return { ok: true, service: "fluxo-conta-relato-api" };
+    return { ok: true, service: "fluxo-conta-relato-api", database: "ready" };
   });
 
   app.get("/status/integrations", { preHandler: app.authenticate }, async () => {

@@ -45,6 +45,22 @@ export interface Transaction {
   updated_at: string;
   parent_transaction_id?: string | null;
   status: TransactionStatus;
+  voided_at?: string | null;
+  voided_by_id?: string | null;
+  void_reason?: string | null;
+}
+
+export type TransactionAuditAction = 'updated' | 'voided';
+
+export interface TransactionAuditEvent {
+  id: string;
+  transaction_id: string;
+  action: TransactionAuditAction;
+  before: Record<string, unknown>;
+  after?: Record<string, unknown> | null;
+  reason: string;
+  created_by_id?: string | null;
+  created_at: string;
 }
 
 export type TransactionType = 
@@ -68,10 +84,11 @@ export const TRANSACTION_TYPES: { value: TransactionType; label: string }[] = [
 
 export interface AccountSummary {
   account: Account;
-  totalEntries: number;
-  totalExits: number;
-  netBalance: number;
+  total_entries: number;
+  total_exits: number;
+  net_balance: number;
   position: 'devedora' | 'credora' | 'equilibrada';
+  total_transactions: number;
 }
 
 export interface CounterpartSummary {
@@ -101,11 +118,24 @@ export interface TransactionWithAccounts extends Transaction {
 
 export type FlowScope = 'all' | 'adm' | 'between_projects';
 export type LoanVisibility = 'open' | 'settled' | 'all';
+export type LoanSettlementDirection = 'adm_owes_projects' | 'projects_owe_adm' | 'between_projects';
+export type LoanSettlementReviewStatus = 'reviewed' | 'needs_correction' | 'corrected' | 'disputed';
 
 export interface LoanReportFilters {
   asOf?: Date | string;
   projectId?: string;
   loanStatus?: LoanVisibility;
+}
+
+export interface LoanSettlementFilters {
+  settledStartDate?: Date | string;
+  settledEndDate?: Date | string;
+  projectId?: string;
+  direction?: LoanSettlementDirection;
+  search?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  onlyWithCorrections?: boolean;
 }
 
 export interface LoanProjectDebt {
@@ -165,6 +195,61 @@ export interface AdmPositionExportReport {
   movements: Array<Record<string, string | number | null | undefined>>;
 }
 
+export interface LoanSettlementReview {
+  id: string;
+  loan_id: string;
+  review_status: LoanSettlementReviewStatus;
+  reason: string;
+  notes?: string | null;
+  created_by_id?: string | null;
+  created_by_name?: string | null;
+  created_by_email?: string | null;
+  created_at: string;
+}
+
+export interface LoanSettlementItem {
+  direction: LoanSettlementDirection;
+  project: Account | null;
+  creditor: Account;
+  debtor: Account;
+  loan: TransactionWithAccounts;
+  movements: TransactionWithAccounts[];
+  reviews: LoanSettlementReview[];
+  latest_review: LoanSettlementReview | null;
+  borrowed: number;
+  returned: number;
+  pending: number;
+  settled_at: string;
+  days_to_settlement: number | null;
+  return_percentage: number;
+  has_corrections: boolean;
+  needs_attention: boolean;
+}
+
+export interface LoanSettlementsReport {
+  generated_at: string;
+  filters: LoanSettlementFilters;
+  summary: {
+    settled_count: number;
+    reviewed_count: number;
+    needs_correction_count: number;
+    corrected_count: number;
+    disputed_count: number;
+    with_corrections_count: number;
+    total_borrowed: number;
+    total_returned: number;
+  };
+  settlements: LoanSettlementItem[];
+}
+
+export interface InterProjectLoanDetail {
+  loan: TransactionWithAccounts;
+  returns: TransactionWithAccounts[];
+  borrowed: number;
+  returned: number;
+  pending: number;
+}
+
 export interface InterProjectLoanPair {
   creditor: Account;
   debtor: Account;
@@ -174,7 +259,7 @@ export interface InterProjectLoanPair {
   days_outstanding: number;
   return_percentage: number;
   oldest_date: string;
-  transactions: TransactionWithAccounts[];
+  transactions: InterProjectLoanDetail[];
 }
 
 export interface InterProjectLoansReport {

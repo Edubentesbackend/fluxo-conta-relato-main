@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { aiApi, reportsApi } from '@/lib/apiClient';
-import { TransactionType } from '@/types/database';
+import { AccountSummary, TransactionType } from '@/types/database';
 import { TransactionFilters } from './useTransactions';
 
 export interface TransactionInsights {
@@ -60,8 +60,8 @@ export const useMonthlyVolumes = (filters?: {
 export const useOptimizedAccountSummaries = (filters?: TransactionFilters) => {
   return useQuery({
     queryKey: ['optimized-account-summaries', filters],
-    queryFn: async () => {
-      return reportsApi.accountSummaries(filters);
+    queryFn: async (): Promise<AccountSummary[]> => {
+      return reportsApi.accountSummaries<AccountSummary[]>(filters);
     },
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,

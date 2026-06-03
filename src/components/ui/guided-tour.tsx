@@ -20,14 +20,20 @@ interface GuidedTourProps {
   isOpen: boolean
   onClose: () => void
   onComplete?: () => void
+  onMissingTarget?: (step: TourStep) => void
 }
 
-export function GuidedTour({ steps, isOpen, onClose, onComplete }: GuidedTourProps) {
+export function GuidedTour({ steps, isOpen, onClose, onComplete, onMissingTarget }: GuidedTourProps) {
   const [currentStep, setCurrentStep] = React.useState(0)
   const [targetPosition, setTargetPosition] = React.useState({ x: 0, y: 0, width: 0, height: 0 })
+  const [targetReady, setTargetReady] = React.useState(false)
 
   React.useEffect(() => {
     if (!isOpen || !steps[currentStep]) return
+
+    setTargetReady(false)
+    let attempts = 0
+    let retryTimer: number | undefined
 
     const updatePosition = () => {
       const targetElement = document.querySelector(steps[currentStep].target)
@@ -39,6 +45,7 @@ export function GuidedTour({ steps, isOpen, onClose, onComplete }: GuidedTourPro
           width: rect.width,
           height: rect.height
         })
+        setTargetReady(true)
 
         // Smooth scroll to target element
         targetElement.scrollIntoView({ 
@@ -50,21 +57,54 @@ export function GuidedTour({ steps, isOpen, onClose, onComplete }: GuidedTourPro
         if (steps[currentStep].highlight) {
           targetElement.classList.add('tour-highlight')
         }
+        return true
       }
+      return false
     }
 
-    updatePosition()
+    const waitForTarget = () => {
+      if (updatePosition()) {
+        if (retryTimer) window.clearInterval(retryTimer)
+        return true
+      }
+
+      attempts += 1
+      if (attempts >= 15) {
+        if (retryTimer) window.clearInterval(retryTimer)
+        onMissingTarget?.(steps[currentStep])
+        onClose()
+      }
+      return false
+    }
+
+    if (!waitForTarget()) retryTimer = window.setInterval(waitForTarget, 100)
     window.addEventListener('resize', updatePosition)
     window.addEventListener('scroll', updatePosition)
 
     return () => {
+      if (retryTimer) window.clearInterval(retryTimer)
       window.removeEventListener('resize', updatePosition)
       window.removeEventListener('scroll', updatePosition)
       document.querySelectorAll('.tour-highlight').forEach(el => {
         el.classList.remove('tour-highlight')
       })
     }
-  }, [currentStep, isOpen, steps])
+  }, [currentStep, isOpen, onClose, onMissingTarget, steps])
+
+  const nextStep = React.useCallback(() => {
+    if (currentStep < steps.length - 1) {
+      setCurrentStep(currentStep + 1)
+    } else {
+      onComplete?.()
+      onClose()
+    }
+  }, [currentStep, onClose, onComplete, steps.length])
+
+  const prevStep = React.useCallback(() => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1)
+    }
+  }, [currentStep])
 
   // Keyboard navigation
   React.useEffect(() => {
@@ -82,22 +122,7 @@ export function GuidedTour({ steps, isOpen, onClose, onComplete }: GuidedTourPro
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, currentStep])
-
-  const nextStep = () => {
-    if (currentStep < steps.length - 1) {
-      setCurrentStep(currentStep + 1)
-    } else {
-      onComplete?.()
-      onClose()
-    }
-  }
-
-  const prevStep = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1)
-    }
-  }
+  }, [isOpen, nextStep, onClose, prevStep])
 
   const getTooltipPosition = () => {
     const step = steps[currentStep]
@@ -137,7 +162,7 @@ export function GuidedTour({ steps, isOpen, onClose, onComplete }: GuidedTourPro
     }
   }
 
-  if (!isOpen) return null
+  if (!isOpen || !targetReady) return null
 
   const progress = ((currentStep + 1) / steps.length) * 100
 

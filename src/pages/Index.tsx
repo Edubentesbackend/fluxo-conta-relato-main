@@ -1,9 +1,5 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { TransactionForm } from '@/components/TransactionForm';
-import { AccountImport } from '@/components/AccountImport';
-import { NewReportsDashboard } from '@/components/reports/NewReportsDashboard';
-import { CadastrosPanel } from '@/components/CadastrosPanel';
+import React, { lazy, Suspense, useState } from 'react';
+import { motion } from 'framer-motion';
 import { UserAccountMenu } from '@/components/UserAccountMenu';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import {
@@ -15,6 +11,11 @@ import {
 } from 'lucide-react';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useTransactions } from '@/hooks/useTransactions';
+
+const TransactionForm = lazy(() => import('@/components/TransactionForm').then(module => ({ default: module.TransactionForm })));
+const AccountImport = lazy(() => import('@/components/AccountImport').then(module => ({ default: module.AccountImport })));
+const NewReportsDashboard = lazy(() => import('@/components/reports/NewReportsDashboard').then(module => ({ default: module.NewReportsDashboard })));
+const CadastrosPanel = lazy(() => import('@/components/CadastrosPanel').then(module => ({ default: module.CadastrosPanel })));
 
 type Tab = 'transactions' | 'import' | 'reports' | 'cadastros';
 
@@ -49,25 +50,13 @@ const tabs: { id: Tab; label: string; icon: React.ElementType; gradient: string;
   },
 ];
 
-const slideVariants = {
-  enter: (dir: number) => ({ x: dir > 0 ? 40 : -40, opacity: 0 }),
-  center: { x: 0, opacity: 1 },
-  exit: (dir: number) => ({ x: dir > 0 ? -40 : 40, opacity: 0 }),
-};
-
 const Index = () => {
   const [activeTab, setActiveTab] = useState<Tab>('transactions');
-  const [direction, setDirection] = useState(1);
 
   const { data: accounts = [] } = useAccounts();
   const { data: transactions = [] } = useTransactions({});
 
-  const tabOrder: Tab[] = ['transactions', 'import', 'reports', 'cadastros'];
-
   const switchTab = (tab: Tab) => {
-    const cur = tabOrder.indexOf(activeTab);
-    const next = tabOrder.indexOf(tab);
-    setDirection(next >= cur ? 1 : -1);
     setActiveTab(tab);
   };
 
@@ -233,16 +222,7 @@ const Index = () => {
 
         {/* Tab Content */}
         <div className="relative min-w-0">
-          <AnimatePresence mode="wait" custom={direction}>
-            <motion.div
-              key={activeTab}
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.22, ease: 'easeInOut' }}
-            >
+          <Suspense fallback={<SectionLoading />}>
               {activeTab === 'transactions' && (
                 <div className="space-y-4">
                   <SectionHeader
@@ -287,13 +267,18 @@ const Index = () => {
                   <CadastrosPanel />
                 </div>
               )}
-            </motion.div>
-          </AnimatePresence>
+          </Suspense>
         </div>
       </main>
     </div>
   );
 };
+
+const SectionLoading = () => (
+  <div className="flex min-h-64 items-center justify-center rounded-2xl border border-border/60 bg-card">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+  </div>
+);
 
 interface SectionHeaderProps {
   icon: React.ElementType;

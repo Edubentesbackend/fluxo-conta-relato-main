@@ -12,7 +12,12 @@ const shutdown = async () => {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-app.listen({ host: env.API_HOST, port: env.API_PORT }).catch(async (error) => {
+async function start() {
+  await prisma.$connect();
+  await app.listen({ host: env.API_HOST, port: env.API_PORT });
+}
+
+start().catch(async (error) => {
   app.log.error(error);
   await prisma.$disconnect();
   process.exit(1);

@@ -3,21 +3,9 @@ import { ThemeProvider } from "next-themes"
 import App from './App.tsx'
 import './index.css'
 
-// Register service worker only in production. In development, clear old PWA
-// caches so Vite always shows the current code.
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((registration) => {
-        console.log('SW registered: ', registration)
-      })
-      .catch((registrationError) => {
-        console.log('SW registration failed: ', registrationError)
-      })
-  })
-}
-
-if ('serviceWorker' in navigator && import.meta.env.DEV) {
+// Offline caching is disabled until financial-data consistency has an
+// explicit strategy. Clear previously installed workers and their caches.
+if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.getRegistrations()
       .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))

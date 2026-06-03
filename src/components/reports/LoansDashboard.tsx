@@ -16,7 +16,6 @@ import {
   TrendingDown,
   X,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -34,7 +33,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Progress } from '@/components/ui/progress';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -51,15 +49,18 @@ import { useAdmPosition, useAdmProjectDetails, useInterProjectLoans } from '@/ho
 import { useCreateReturn } from '@/hooks/useTransactions';
 import { reportsApi } from '@/lib/apiClient';
 import { cn } from '@/lib/utils';
+import { LoanSettlementHistory } from '@/components/reports/LoanSettlementHistory';
 import {
   AdmLoanDetail,
   AdmPositionExportReport,
+  InterProjectLoanDetail,
   InterProjectLoanPair,
   LoanProjectDebt,
   LoanReportFilters,
-  LoanVisibility,
+  LoanSettlementFilters,
+  LoanSettlementsReport,
 } from '@/types/database';
-import { formatCurrency } from '@/utils/currency';
+import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '@/utils/currency';
 
 const ADM_NUMBER = '12671-3';
 
@@ -111,11 +112,18 @@ const KpiCard: React.FC<{
   );
 };
 
+interface ReturnDialogLoan {
+  id: string;
+  unique_identifier: string;
+  transaction_date: string;
+}
+
 const ReturnDialog: React.FC<{
-  detail: AdmLoanDetail;
+  loan: ReturnDialogLoan;
+  pending: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-}> = ({ detail, open, onOpenChange }) => {
+}> = ({ loan, pending, open, onOpenChange }) => {
   const createReturn = useCreateReturn();
   const { toast } = useToast();
   const [amount, setAmount] = useState('');
@@ -129,11 +137,11 @@ const ReturnDialog: React.FC<{
   };
 
   const submit = async () => {
-    const parsedAmount = Number(amount.replace(',', '.'));
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || parsedAmount > detail.pending) {
+    const parsedAmount = parseCurrencyInput(amount);
+    if (parsedAmount <= 0 || parsedAmount > pending) {
       toast({
         title: 'Valor inválido',
-        description: `Informe um valor entre R$ 0,01 e ${formatCurrency(detail.pending)}.`,
+        description: `Informe um valor entre R$ 0,01 e ${formatCurrency(pending)}.`,
         variant: 'destructive',
       });
       return;
@@ -145,7 +153,7 @@ const ReturnDialog: React.FC<{
 
     try {
       await createReturn.mutateAsync({
-        loanId: detail.loan.id,
+        loanId: loan.id,
         payload: {
           amount: parsedAmount,
           description: description.trim(),
@@ -169,38 +177,35 @@ const ReturnDialog: React.FC<{
         <DialogHeader>
           <DialogTitle>Registrar devolução</DialogTitle>
           <DialogDescription>
-            Empréstimo {detail.loan.unique_identifier}. Saldo disponível: {formatCurrency(detail.pending)}.
+            Empréstimo {loan.unique_identifier}. Saldo disponível: {formatCurrency(pending)}.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor={`return-amount-${detail.loan.id}`}>Valor</Label>
+            <Label htmlFor={`return-amount-${loan.id}`}>Valor</Label>
             <Input
-              id={`return-amount-${detail.loan.id}`}
-              type="number"
-              min="0.01"
-              max={detail.pending}
-              step="0.01"
+              id={`return-amount-${loan.id}`}
+              type="text"
+              inputMode="numeric"
               value={amount}
-              onChange={(event) => setAmount(event.target.value)}
+              onChange={(event) => setAmount(formatCurrencyInput(event.target.value))}
               placeholder="0,00"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`return-date-${detail.loan.id}`}>Data</Label>
+            <Label htmlFor={`return-date-${loan.id}`}>Data</Label>
             <Input
-              id={`return-date-${detail.loan.id}`}
+              id={`return-date-${loan.id}`}
               type="date"
-              min={detail.loan.transaction_date.slice(0, 10)}
-              max={format(new Date(), 'yyyy-MM-dd')}
+              min={loan.transaction_date.slice(0, 10)}
               value={transactionDate}
               onChange={(event) => setTransactionDate(event.target.value)}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`return-description-${detail.loan.id}`}>Descrição</Label>
+            <Label htmlFor={`return-description-${loan.id}`}>Descrição</Label>
             <Textarea
-              id={`return-description-${detail.loan.id}`}
+              id={`return-description-${loan.id}`}
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               placeholder="Informe a referência da devolução"
@@ -280,7 +285,7 @@ const LoanItem: React.FC<{ detail: AdmLoanDetail; historical: boolean }> = ({ de
           </Button>
         </div>
       )}
-      <ReturnDialog detail={detail} open={returnDialogOpen} onOpenChange={setReturnDialogOpen} />
+      <ReturnDialog loan={detail.loan} pending={detail.pending} open={returnDialogOpen} onOpenChange={setReturnDialogOpen} />
     </div>
   );
 };
@@ -482,35 +487,134 @@ const AdmSection: React.FC<{ filters: LoanReportFilters; historical: boolean }> 
   );
 };
 
-const InterProjectSection: React.FC<{ filters: LoanReportFilters }> = ({ filters }) => {
+const InterProjectLoanItem: React.FC<{ detail: InterProjectLoanDetail; historical: boolean }> = ({ detail, historical }) => {
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+
+  return (
+    <div className="border-b border-border/70 px-3 py-3 last:border-b-0">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs font-semibold">{detail.loan.unique_identifier}</span>
+            {statusBadge(detail.pending, detail.returned)}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{formatDate(detail.loan.transaction_date)}</p>
+          <p className="mt-1 break-words text-sm">{detail.loan.description}</p>
+        </div>
+        <div className="grid shrink-0 grid-cols-3 gap-3 text-right text-xs sm:min-w-[280px]">
+          <div>
+            <p className="text-muted-foreground">Emprestado</p>
+            <p className="font-semibold">{formatCurrency(detail.borrowed)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Devolvido</p>
+            <p className="font-semibold text-emerald-700">{formatCurrency(detail.returned)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Saldo</p>
+            <p className="font-semibold text-red-700">{formatCurrency(detail.pending)}</p>
+          </div>
+        </div>
+      </div>
+
+      {detail.returns.length > 0 && (
+        <div className="mt-3 border-t border-border/60 pt-3">
+          <p className="mb-2 text-xs font-semibold text-muted-foreground">Devoluções vinculadas</p>
+          <div className="space-y-2">
+            {detail.returns.map((item) => (
+              <div key={item.id} className="flex flex-col gap-1 rounded-md bg-muted/40 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+                <span>{formatDate(item.transaction_date)} · <span className="font-mono">{item.unique_identifier}</span></span>
+                <span className="font-semibold text-emerald-700">{formatCurrency(Number(item.amount))}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {detail.pending > 0 && (
+        <div className="mt-3 flex justify-end">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={historical}
+            title={historical ? 'Volte para a posição atual para registrar uma devolução' : 'Registrar devolução'}
+            onClick={() => setReturnDialogOpen(true)}
+          >
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            Registrar devolução
+          </Button>
+        </div>
+      )}
+      <ReturnDialog loan={detail.loan} pending={detail.pending} open={returnDialogOpen} onOpenChange={setReturnDialogOpen} />
+    </div>
+  );
+};
+
+const InterProjectPairRow: React.FC<{ pair: InterProjectLoanPair; historical: boolean }> = ({ pair, historical }) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <TableRow className="cursor-pointer" onClick={() => setOpen((v) => !v)}>
+        <TableCell className="w-10">
+          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </TableCell>
+        <TableCell>{pair.creditor.name}<p className="text-xs text-muted-foreground">{pair.creditor.account_number}</p></TableCell>
+        <TableCell>{pair.debtor.name}<p className="text-xs text-muted-foreground">{pair.debtor.account_number}</p></TableCell>
+        <TableCell className="text-right">{formatCurrency(pair.borrowed)}</TableCell>
+        <TableCell className="text-right text-emerald-700">{formatCurrency(pair.returned)}</TableCell>
+        <TableCell className="text-right font-semibold text-red-700">{formatCurrency(pair.pending)}</TableCell>
+      </TableRow>
+      {open && (
+        <TableRow>
+          <TableCell colSpan={6} className="p-0">
+            <div className="bg-muted/20">
+              {pair.transactions.map((detail) => (
+                <InterProjectLoanItem key={detail.loan.id} detail={detail} historical={historical} />
+              ))}
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+};
+
+const InterProjectSection: React.FC<{ filters: LoanReportFilters; historical: boolean }> = ({ filters, historical }) => {
   const { data, isLoading, error } = useInterProjectLoans(filters);
 
   if (isLoading) return <Skeleton className="h-40" />;
   if (error) return <p className="text-sm text-destructive">{(error as Error).message}</p>;
 
   const pairs = data?.by_pair ?? [];
+  const totalCirculating = pairs.reduce((sum, pair) => sum + pair.pending, 0);
+  const oldestLoanDate = getOldestDate(...pairs.map((pair) => pair.oldest_date));
+
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <KpiCard title="Saldo em circulação" value={formatCurrency(data?.total_circulating ?? 0)} subtitle="Entre projetos" icon={<ArrowLeftRight className="h-4 w-4 text-blue-700" />} tone="blue" />
-        <KpiCard title="Relações ativas" value={String(data?.active_pairs_count ?? 0)} subtitle="Pares de projetos" icon={<Building2 className="h-4 w-4" />} />
-        <KpiCard title="Mais antigo" value={data?.oldest_loan_date ? formatDate(data.oldest_loan_date) : 'Sem pendências'} subtitle="Data do primeiro empréstimo" icon={<Clock className="h-4 w-4" />} />
+        <KpiCard title="Saldo em circulação" value={formatCurrency(totalCirculating)} subtitle="Entre projetos" icon={<ArrowLeftRight className="h-4 w-4 text-blue-700" />} tone="blue" />
+        <KpiCard title="Relações ativas" value={String(pairs.length)} subtitle="Pares de projetos" icon={<Building2 className="h-4 w-4" />} />
+        <KpiCard title="Mais antigo" value={oldestLoanDate ? formatDate(oldestLoanDate) : 'Sem pendências'} subtitle="Data do primeiro empréstimo" icon={<Clock className="h-4 w-4" />} />
       </div>
       {pairs.length === 0 ? (
         <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">Nenhum empréstimo entre projetos neste filtro.</div>
       ) : (
         <div className="overflow-x-auto rounded-md border">
           <Table>
-            <TableHeader><TableRow><TableHead>Credor</TableHead><TableHead>Devedor</TableHead><TableHead className="text-right">Emprestado</TableHead><TableHead className="text-right">Devolvido</TableHead><TableHead className="text-right">Saldo</TableHead></TableRow></TableHeader>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10" />
+                <TableHead>Credor</TableHead>
+                <TableHead>Devedor</TableHead>
+                <TableHead className="text-right">Emprestado</TableHead>
+                <TableHead className="text-right">Devolvido</TableHead>
+                <TableHead className="text-right">Saldo</TableHead>
+              </TableRow>
+            </TableHeader>
             <TableBody>
               {pairs.map((pair: InterProjectLoanPair) => (
-                <TableRow key={`${pair.creditor.id}-${pair.debtor.id}`}>
-                  <TableCell>{pair.creditor.name}<p className="text-xs text-muted-foreground">{pair.creditor.account_number}</p></TableCell>
-                  <TableCell>{pair.debtor.name}<p className="text-xs text-muted-foreground">{pair.debtor.account_number}</p></TableCell>
-                  <TableCell className="text-right">{formatCurrency(pair.borrowed)}</TableCell>
-                  <TableCell className="text-right text-emerald-700">{formatCurrency(pair.returned)}</TableCell>
-                  <TableCell className="text-right font-semibold text-red-700">{formatCurrency(pair.pending)}</TableCell>
-                </TableRow>
+                <InterProjectPairRow key={`${pair.creditor.id}-${pair.debtor.id}`} pair={pair} historical={historical} />
               ))}
             </TableBody>
           </Table>
@@ -522,23 +626,43 @@ const InterProjectSection: React.FC<{ filters: LoanReportFilters }> = ({ filters
 
 export const LoansDashboard: React.FC = () => {
   const [asOf, setAsOf] = useState<Date>();
-  const [loanStatus, setLoanStatus] = useState<LoanVisibility>('open');
+  const [settlementFilters, setSettlementFilters] = useState<LoanSettlementFilters>({});
   const [exporting, setExporting] = useState(false);
   const { toast } = useToast();
 
   const filters = useMemo<LoanReportFilters>(() => ({
     asOf: asOf ? endOfDay(asOf).toISOString() : undefined,
-    loanStatus,
-  }), [asOf, loanStatus]);
+    loanStatus: 'open',
+  }), [asOf]);
   const historical = Boolean(asOf && !isToday(asOf));
 
   const exportReport = async () => {
     setExporting(true);
     try {
       const report = await reportsApi.admPositionExport<AdmPositionExportReport>(filters);
+      const settlements = await reportsApi.loanSettlements<LoanSettlementsReport>(settlementFilters);
+      const XLSX = await import('xlsx');
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(report.consolidated), 'Consolidado ADM');
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(report.movements), 'Movimentacoes');
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.json_to_sheet(settlements.settlements.map((item) => ({
+          Identificador: item.loan.unique_identifier,
+          Direcao: item.direction,
+          Projeto: item.project?.name ?? '',
+          Credor: item.creditor.name,
+          Devedor: item.debtor.name,
+          Emprestado: item.borrowed,
+          Devolvido: item.returned,
+          QuitadoEm: item.settled_at,
+          DiasAteQuitacao: item.days_to_settlement,
+          Revisao: item.latest_review?.review_status ?? 'sem_revisao',
+          MotivoRevisao: item.latest_review?.reason ?? '',
+          PossuiCorrecao: item.has_corrections ? 'Sim' : 'Nao',
+        }))),
+        'Historico Quitacoes',
+      );
       XLSX.writeFile(workbook, `emprestimos-adm-${format(new Date(report.as_of), 'yyyy-MM-dd')}.xlsx`);
     } catch (error: any) {
       toast({ title: 'Não foi possível exportar', description: error.message, variant: 'destructive' });
@@ -558,14 +682,6 @@ export const LoansDashboard: React.FC = () => {
           <p className="mt-1 text-sm text-muted-foreground">Posição consolidada da Fundação ADM {ADM_NUMBER}.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <Select value={loanStatus} onValueChange={(value) => setLoanStatus(value as LoanVisibility)}>
-            <SelectTrigger className="w-full sm:w-[170px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="open">Somente pendentes</SelectItem>
-              <SelectItem value="settled">Somente quitados</SelectItem>
-              <SelectItem value="all">Todos</SelectItem>
-            </SelectContent>
-          </Select>
           <div className="flex gap-1">
             <Popover>
               <PopoverTrigger asChild>
@@ -594,13 +710,24 @@ export const LoansDashboard: React.FC = () => {
         </div>
       )}
 
-      <Tabs defaultValue="adm">
+      <Tabs defaultValue="pending">
         <TabsList className="grid h-auto w-full grid-cols-1 gap-1 sm:w-auto sm:grid-cols-2">
-          <TabsTrigger value="adm" className="gap-2 px-3 py-2"><Building2 className="h-4 w-4" />ADM / Fundação</TabsTrigger>
-          <TabsTrigger value="projects" className="gap-2 px-3 py-2"><ArrowLeftRight className="h-4 w-4" />Entre projetos</TabsTrigger>
+          <TabsTrigger value="pending" className="gap-2 px-3 py-2"><Clock className="h-4 w-4" />Pendências</TabsTrigger>
+          <TabsTrigger value="settlements" className="gap-2 px-3 py-2"><CheckCircle2 className="h-4 w-4" />Histórico de Quitações</TabsTrigger>
         </TabsList>
-        <TabsContent value="adm" className="mt-5"><AdmSection filters={filters} historical={historical} /></TabsContent>
-        <TabsContent value="projects" className="mt-5"><InterProjectSection filters={filters} /></TabsContent>
+        <TabsContent value="pending" className="mt-5">
+          <Tabs defaultValue="adm">
+            <TabsList className="grid h-auto w-full grid-cols-1 gap-1 sm:w-auto sm:grid-cols-2">
+              <TabsTrigger value="adm" className="gap-2 px-3 py-2"><Building2 className="h-4 w-4" />ADM / Fundação</TabsTrigger>
+              <TabsTrigger value="projects" className="gap-2 px-3 py-2"><ArrowLeftRight className="h-4 w-4" />Entre projetos</TabsTrigger>
+            </TabsList>
+            <TabsContent value="adm" className="mt-5"><AdmSection filters={filters} historical={historical} /></TabsContent>
+            <TabsContent value="projects" className="mt-5"><InterProjectSection filters={filters} historical={historical} /></TabsContent>
+          </Tabs>
+        </TabsContent>
+        <TabsContent value="settlements" className="mt-5">
+          <LoanSettlementHistory filters={settlementFilters} onFiltersChange={setSettlementFilters} />
+        </TabsContent>
       </Tabs>
     </div>
   );

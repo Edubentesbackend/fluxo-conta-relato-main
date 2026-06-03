@@ -37,15 +37,28 @@ export interface CreateReturnPayload {
   description: string;
 }
 
+export interface UpdateTransactionPayload {
+  amount: number;
+  description?: string;
+  reason: string;
+}
+
+export interface VoidTransactionPayload {
+  reason: string;
+}
+
 function invalidateTransactionReports(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: ['transactions'] });
   queryClient.invalidateQueries({ queryKey: ['transaction-insights'] });
   queryClient.invalidateQueries({ queryKey: ['monthly-volumes'] });
   queryClient.invalidateQueries({ queryKey: ['optimized-account-summaries'] });
+  queryClient.invalidateQueries({ queryKey: ['account-summaries'] });
+  queryClient.invalidateQueries({ queryKey: ['account-breakdown'] });
   queryClient.invalidateQueries({ queryKey: ['executive-insights-ai'] });
   queryClient.invalidateQueries({ queryKey: ['adm-position'] });
   queryClient.invalidateQueries({ queryKey: ['adm-project-details'] });
   queryClient.invalidateQueries({ queryKey: ['inter-project-loans'] });
+  queryClient.invalidateQueries({ queryKey: ['loan-settlements'] });
 }
 
 export const useTransactions = (filters?: TransactionFilters) => {
@@ -76,6 +89,32 @@ export const useCreateReturn = () => {
   return useMutation({
     mutationFn: async ({ loanId, payload }: { loanId: string; payload: CreateReturnPayload }) => {
       return transactionsApi.createReturn<Transaction>(loanId, payload);
+    },
+    onSuccess: () => {
+      invalidateTransactionReports(queryClient);
+    },
+  });
+};
+
+export const useUpdateTransaction = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: UpdateTransactionPayload }) => {
+      return transactionsApi.update<Transaction>(id, payload);
+    },
+    onSuccess: () => {
+      invalidateTransactionReports(queryClient);
+    },
+  });
+};
+
+export const useVoidTransaction = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: VoidTransactionPayload }) => {
+      return transactionsApi.void<Transaction>(id, payload);
     },
     onSuccess: () => {
       invalidateTransactionReports(queryClient);

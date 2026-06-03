@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(npx prisma *)",
-      "Bash(findstr /n \"AccountType\\\\|account_type\\\\|accountType\" \"c:\\\\Users\\\\eduardo.carneiro\\\\OneDrive - Fundacao de Apoio Institucional Muraki\\\\Documentos\\\\Nova pasta\\\\fluxo-conta-relato-main\\\\node_modules\\\\.prisma\\\\client\\\\index.d.ts\")"
+      "Bash(findstr /n \"AccountType\\\\|account_type\\\\|accountType\" \"c:\\\\Users\\\\eduardo.carneiro\\\\OneDrive - Fundacao de Apoio Institucional Muraki\\\\Documentos\\\\Nova pasta\\\\fluxo-conta-relato-main\\\\node_modules\\\\.prisma\\\\client\\\\index.d.ts\")",
+      "Bash(DATABASE_URL=postgresql://fluxo:YcsBahF_QoX5I4MLFmCeP-drX1a907QECxL9XnpxCjjRcAmq@localhost:5432/fluxo_conta_relato?schema=public node -e ' *)",
+      "Bash(curl -s http://localhost:8080/api/auth/login -X POST -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"wrong\"}')",
+      "Bash(npm run *)"
     ]
   }
 }

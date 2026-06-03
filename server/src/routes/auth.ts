@@ -10,11 +10,23 @@ import {
   verifyPassword,
 } from "../services/password-service.js";
 import { badRequest, unauthorized } from "../utils/errors.js";
+import { conflict } from "../utils/errors.js";
 import type { AuthUser } from "../types.js";
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  username: z.string().min(1),
   password: z.string().min(1),
+});
+
+const registerSchema = z.object({
+  name: z.string().min(2),
+  username: z.string().min(3).regex(/^[a-zA-Z0-9_]+$/, "Apenas letras, números e underscore"),
+  email: z.string().email(),
+  password: z.string().min(8, "Senha deve ter no mínimo 8 caracteres"),
+  confirmPassword: z.string(),
+}).refine((d) => d.password === d.confirmPassword, {
+  message: "As senhas não coincidem",
+  path: ["confirmPassword"],
 });
 
 const refreshSchema = z.object({
@@ -27,12 +39,14 @@ function hashToken(token: string) {
 
 function serializeUser(user: {
   id: string;
+  username: string;
   email: string;
   name: string;
   role: "admin" | "manager" | "analyst" | "viewer";
 }) {
   return {
     id: user.id,
+    username: user.username,
     email: user.email,
     name: user.name,
     role: user.role,
@@ -41,6 +55,7 @@ function serializeUser(user: {
 
 async function issueTokens(app: FastifyInstance, user: {
   id: string;
+  username: string;
   email: string;
   name: string;
   role: "admin" | "manager" | "analyst" | "viewer";
@@ -78,8 +93,8 @@ async function issueTokens(app: FastifyInstance, user: {
 export async function authRoutes(app: FastifyInstance) {
   app.post("/login", async (request) => {
     const input = loginSchema.parse(request.body);
-    const user = await prisma.user.findUnique({
-      where: { email: input.email },
+    const user = await prisma.user.findFirst({
+      where: { username: input.username },
       include: {
         credentials: {
           where: { credentialType: PASSWORD_CREDENTIAL_TYPE },
@@ -110,6 +125,31 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     return issueTokens(app, user);
+  });
+
+  app.post("/register", async (request, reply) => {
+    const input = registerSchema.parse(request.body);
+
+    const existingUsername = await prisma.user.findFirst({ where: { username: input.username } });
+    if (existingUsername) throw conflict("Nome de usuário já está em uso");
+
+    const existingEmail = await prisma.user.findFirst({ where: { email: input.email } });
+    if (existingEmail) throw conflict("E-mail já cadastrado");
+
+    const passwordCredential = await buildPasswordCredential(input.password);
+    const newUser = await prisma.user.create({
+      data: {
+        username: input.username,
+        email: input.email,
+        name: input.name,
+        role: "viewer",
+        isActive: true,
+        credentials: { create: passwordCredential },
+      },
+    });
+
+    reply.code(201);
+    return issueTokens(app, newUser);
   });
 
   app.post("/refresh", async (request) => {
@@ -149,7 +189,7 @@ export async function authRoutes(app: FastifyInstance) {
     const authUser = request.user as AuthUser;
     const user = await prisma.user.findUnique({
       where: { id: authUser.sub },
-      select: { id: true, email: true, name: true, role: true },
+      select: { id: true, username: true, email: true, name: true, role: true },
     });
     if (!user) throw badRequest("Usuario nao encontrado");
     return { user: serializeUser(user) };

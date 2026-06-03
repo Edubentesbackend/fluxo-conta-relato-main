@@ -1,6 +1,6 @@
 import { FormEvent, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, LogIn, TrendingUp, BarChart3, Shield, Zap } from "lucide-react";
+import { Lock, LogIn, TrendingUp, BarChart3, Shield, Zap, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,9 +13,13 @@ const features = [
   { icon: Zap, text: "Exportações em PDF e Excel" },
 ];
 
-export function LoginPage() {
+interface LoginPageProps {
+  onShowRegister: () => void;
+}
+
+export function LoginPage({ onShowRegister }: LoginPageProps) {
   const { login } = useAuth();
-  const [email, setEmail] = useState("admin@local.dev");
+  const [username, setUsername] = useState("admin");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const passwordInputRef = useRef<HTMLInputElement>(null);
@@ -26,7 +30,7 @@ export function LoginPage() {
     setIsSubmitting(true);
     const password = passwordInputRef.current?.value ?? "";
     try {
-      await login(email.trim(), password);
+      await login(username.trim(), password);
     } catch (err: any) {
       setError(err.message || "Credenciais inválidas. Tente novamente.");
     } finally {
@@ -39,13 +43,11 @@ export function LoginPage() {
     <div className="min-h-screen flex">
       {/* ── Left panel (hero) ── */}
       <div className="hidden lg:flex lg:flex-1 relative overflow-hidden gradient-hero">
-        {/* Decorative circles */}
         <div className="absolute -top-20 -right-20 h-80 w-80 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute -bottom-20 -left-20 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-64 w-64 rounded-full bg-white/5 blur-xl" />
 
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
-          {/* Logo */}
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
               <TrendingUp className="h-5 w-5 text-white" />
@@ -53,7 +55,6 @@ export function LoginPage() {
             <span className="text-xl font-bold tracking-tight">FluxoFinanceiro</span>
           </div>
 
-          {/* Main copy */}
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
@@ -70,7 +71,6 @@ export function LoginPage() {
               </p>
             </div>
 
-            {/* Feature list */}
             <ul className="space-y-3">
               {features.map((f, i) => (
                 <motion.li
@@ -89,7 +89,6 @@ export function LoginPage() {
             </ul>
           </motion.div>
 
-          {/* Footer */}
           <p className="text-xs text-white/40">
             © {new Date().getFullYear()} Fundação Muraki · Todos os direitos reservados
           </p>
@@ -112,7 +111,6 @@ export function LoginPage() {
             <span className="font-bold text-gradient-hero">FluxoFinanceiro</span>
           </div>
 
-          {/* Header */}
           <div className="space-y-1.5">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 mb-4">
               <Lock className="h-5 w-5 text-primary" />
@@ -121,19 +119,18 @@ export function LoginPage() {
             <p className="text-sm text-muted-foreground">Entre com suas credenciais para acessar o sistema</p>
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium">E-mail</Label>
+              <Label htmlFor="username" className="text-sm font-medium">Usuário</Label>
               <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
                 required
                 className="h-11 rounded-xl border-2 focus:border-primary"
-                placeholder="seu@email.com"
+                placeholder="seu_usuario"
               />
             </div>
 
@@ -186,6 +183,20 @@ export function LoginPage() {
               )}
             </Button>
           </form>
+
+          <div className="text-center">
+            <p className="text-sm text-muted-foreground">
+              Não tem conta?{" "}
+              <button
+                type="button"
+                onClick={onShowRegister}
+                className="font-semibold text-primary hover:underline inline-flex items-center gap-1"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Cadastrar-se
+              </button>
+            </p>
+          </div>
         </motion.div>
       </div>
     </div>

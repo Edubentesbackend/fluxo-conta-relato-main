@@ -21,8 +21,23 @@ export interface CreateTransactionInput {
   parent_transaction_id?: string | null;
 }
 
+export interface UpdateTransactionInput {
+  amount: number;
+  description?: string;
+  reason: string;
+}
+
+export interface VoidTransactionInput {
+  reason: string;
+}
+
+const TRANSACTION_ACCOUNT_INCLUDE = {
+  sourceAccount: { include: { coordinator: true } },
+  destinationAccount: { include: { coordinator: true } },
+} as const;
+
 export function buildTransactionWhere(filters: TransactionFilters = {}): Prisma.TransactionWhereInput {
-  const where: Prisma.TransactionWhereInput = {};
+  const where: Prisma.TransactionWhereInput = { voidedAt: null };
 
   if (filters.startDate || filters.endDate) {
     where.transactionDate = {};
@@ -113,11 +128,13 @@ async function assertAccountsCanBeUsed(
 async function updateLoanStatus(tx: Prisma.TransactionClient, loanId: string) {
   const loan = await tx.transaction.findUnique({ where: { id: loanId } });
   if (!loan) throw notFound("Emprestimo nao encontrado");
+  if (loan.voidedAt) return;
 
   const aggregate = await tx.transaction.aggregate({
     where: {
       parentTransactionId: loanId,
       transactionType: "devolucao",
+      voidedAt: null,
     },
     _sum: { amount: true },
   });
@@ -132,13 +149,140 @@ async function updateLoanStatus(tx: Prisma.TransactionClient, loanId: string) {
   });
 }
 
+type TransactionSnapshotInput = {
+  id: string;
+  uniqueIdentifier: string;
+  sourceAccountId: string;
+  destinationAccountId: string;
+  transactionDate: Date;
+  amount: Prisma.Decimal | number;
+  transactionType: TransactionType;
+  description: string;
+  parentTransactionId: string | null;
+  status: string;
+  createdById: string | null;
+  voidedAt?: Date | null;
+  voidedById?: string | null;
+  voidReason?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function serializeAuditSnapshot(transaction: TransactionSnapshotInput): Prisma.InputJsonObject {
+  return {
+    id: transaction.id,
+    unique_identifier: transaction.uniqueIdentifier,
+    source_account_id: transaction.sourceAccountId,
+    destination_account_id: transaction.destinationAccountId,
+    transaction_date: transaction.transactionDate.toISOString(),
+    amount: Number(transaction.amount),
+    transaction_type: transaction.transactionType,
+    description: transaction.description,
+    parent_transaction_id: transaction.parentTransactionId,
+    status: transaction.status,
+    created_by_id: transaction.createdById,
+    voided_at: transaction.voidedAt?.toISOString() ?? null,
+    voided_by_id: transaction.voidedById ?? null,
+    void_reason: transaction.voidReason ?? null,
+    created_at: transaction.createdAt.toISOString(),
+    updated_at: transaction.updatedAt.toISOString(),
+  };
+}
+
+async function createTransactionAuditEvent(
+  tx: Prisma.TransactionClient,
+  input: {
+    transactionId: string;
+    action: "updated" | "voided";
+    before: Prisma.InputJsonObject;
+    after?: Prisma.InputJsonObject;
+    reason: string;
+    actorId: string;
+    ipAddress?: string;
+  },
+) {
+  await tx.transactionAuditEvent.create({
+    data: {
+      transactionId: input.transactionId,
+      action: input.action,
+      before: input.before,
+      after: input.after ?? null,
+      reason: input.reason,
+      createdById: input.actorId,
+    },
+  });
+
+  await tx.auditLog.create({
+    data: {
+      userId: input.actorId,
+      action: `transaction.${input.action}`,
+      entityType: "transaction",
+      entityId: input.transactionId,
+      metadata: {
+        reason: input.reason,
+        before: input.before,
+        after: input.after ?? null,
+      },
+      ipAddress: input.ipAddress,
+    },
+  });
+}
+
+async function assertReturnTotalWithinLoan(
+  tx: Prisma.TransactionClient,
+  loanId: string,
+  returnAmount: number,
+  ignoredReturnId?: string,
+) {
+  const loan = await tx.transaction.findUnique({
+    where: { id: loanId },
+    select: { id: true, amount: true, transactionType: true, voidedAt: true },
+  });
+
+  if (!loan || loan.transactionType !== "emprestimo" || loan.voidedAt) {
+    throw badRequest("Emprestimo original indisponivel para esta devolucao");
+  }
+
+  const aggregate = await tx.transaction.aggregate({
+    where: {
+      parentTransactionId: loanId,
+      transactionType: "devolucao",
+      voidedAt: null,
+      ...(ignoredReturnId ? { NOT: { id: ignoredReturnId } } : {}),
+    },
+    _sum: { amount: true },
+  });
+
+  const alreadyReturned = Number(aggregate._sum.amount || 0);
+  if (alreadyReturned + returnAmount > Number(loan.amount)) {
+    throw badRequest("A soma das devolucoes nao pode ultrapassar o valor do emprestimo");
+  }
+}
+
+async function assertLoanAmountCoversReturns(
+  tx: Prisma.TransactionClient,
+  loanId: string,
+  loanAmount: number,
+) {
+  const aggregate = await tx.transaction.aggregate({
+    where: {
+      parentTransactionId: loanId,
+      transactionType: "devolucao",
+      voidedAt: null,
+    },
+    _sum: { amount: true },
+  });
+
+  const returnedAmount = Number(aggregate._sum.amount || 0);
+  if (returnedAmount > loanAmount) {
+    throw badRequest("O valor do emprestimo nao pode ser menor que as devolucoes ativas");
+  }
+}
+
 export async function listTransactions(filters: TransactionFilters = {}) {
   const transactions = await prisma.transaction.findMany({
     where: buildTransactionWhere(filters),
-    include: {
-      sourceAccount: { include: { coordinator: true } },
-      destinationAccount: { include: { coordinator: true } },
-    },
+    include: TRANSACTION_ACCOUNT_INCLUDE,
     orderBy: { transactionDate: "desc" },
   });
 
@@ -152,6 +296,7 @@ export async function createTransaction(input: CreateTransactionInput, createdBy
     destinationAccountId: input.destination_account_id,
     transactionDate,
     amount: input.amount,
+    allowFutureDate: input.transaction_type === "devolucao",
   });
 
   return prisma.$transaction(async (tx) => {
@@ -177,7 +322,7 @@ export async function createTransaction(input: CreateTransactionInput, createdBy
         where: { id: input.parent_transaction_id },
       });
 
-      if (!parent || parent.transactionType !== "emprestimo") {
+      if (!parent || parent.transactionType !== "emprestimo" || parent.voidedAt) {
         throw badRequest("parent_transaction_id deve apontar para uma transacao de emprestimo");
       }
 
@@ -192,6 +337,7 @@ export async function createTransaction(input: CreateTransactionInput, createdBy
         where: {
           parentTransactionId: parent.id,
           transactionType: "devolucao",
+          voidedAt: null,
         },
         _sum: { amount: true },
       });
@@ -218,10 +364,7 @@ export async function createTransaction(input: CreateTransactionInput, createdBy
         status,
         createdById,
       },
-      include: {
-        sourceAccount: { include: { coordinator: true } },
-        destinationAccount: { include: { coordinator: true } },
-      },
+      include: TRANSACTION_ACCOUNT_INCLUDE,
     });
 
     if (input.transaction_type === "devolucao" && input.parent_transaction_id) {
@@ -238,7 +381,7 @@ export async function createReturnTransaction(
   createdById?: string,
 ) {
   const loan = await prisma.transaction.findUnique({ where: { id: loanId } });
-  if (!loan || loan.transactionType !== "emprestimo") {
+  if (!loan || loan.transactionType !== "emprestimo" || loan.voidedAt) {
     throw notFound("Emprestimo nao encontrado");
   }
 
@@ -249,4 +392,106 @@ export async function createReturnTransaction(
     transaction_type: "devolucao",
     parent_transaction_id: loanId,
   }, createdById);
+}
+
+export async function updateTransaction(
+  id: string,
+  input: UpdateTransactionInput,
+  actorId: string,
+  ipAddress?: string,
+) {
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    throw badRequest("Valor deve ser maior que zero");
+  }
+
+  const reason = input.reason.trim();
+  if (!reason) throw badRequest("Motivo da correcao e obrigatorio");
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.transaction.findUnique({ where: { id } });
+    if (!existing) throw notFound("Transacao nao encontrada");
+    if (existing.voidedAt) throw badRequest("Transacao cancelada nao pode ser editada");
+
+    if (existing.transactionType === "devolucao") {
+      if (!existing.parentTransactionId) throw badRequest("Devolucao sem emprestimo vinculado nao pode ser editada");
+      await assertReturnTotalWithinLoan(tx, existing.parentTransactionId, input.amount, existing.id);
+    }
+
+    if (existing.transactionType === "emprestimo") {
+      await assertLoanAmountCoversReturns(tx, existing.id, input.amount);
+    }
+
+    const before = serializeAuditSnapshot(existing);
+    const updated = await tx.transaction.update({
+      where: { id },
+      data: {
+        amount: new Prisma.Decimal(input.amount),
+        description: input.description?.trim() || existing.description,
+      },
+      include: TRANSACTION_ACCOUNT_INCLUDE,
+    });
+    const after = serializeAuditSnapshot(updated);
+
+    if (existing.transactionType === "emprestimo") {
+      await updateLoanStatus(tx, existing.id);
+    } else if (existing.transactionType === "devolucao" && existing.parentTransactionId) {
+      await updateLoanStatus(tx, existing.parentTransactionId);
+    }
+
+    await createTransactionAuditEvent(tx, {
+      transactionId: id,
+      action: "updated",
+      before,
+      after,
+      reason,
+      actorId,
+      ipAddress,
+    });
+
+    return serializeTransaction(updated);
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function voidTransaction(
+  id: string,
+  input: VoidTransactionInput,
+  actorId: string,
+  ipAddress?: string,
+) {
+  const reason = input.reason.trim();
+  if (!reason) throw badRequest("Motivo do cancelamento e obrigatorio");
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.transaction.findUnique({ where: { id } });
+    if (!existing) throw notFound("Transacao nao encontrada");
+    if (existing.voidedAt) throw badRequest("Transacao ja esta cancelada");
+
+    const before = serializeAuditSnapshot(existing);
+    const updated = await tx.transaction.update({
+      where: { id },
+      data: {
+        voidedAt: new Date(),
+        voidedById: actorId,
+        voidReason: reason,
+      },
+      include: TRANSACTION_ACCOUNT_INCLUDE,
+    });
+    const after = serializeAuditSnapshot(updated);
+
+    if (existing.transactionType === "devolucao" && existing.parentTransactionId) {
+      await updateLoanStatus(tx, existing.parentTransactionId);
+    }
+
+    await createTransactionAuditEvent(tx, {
+      transactionId: id,
+      action: "voided",
+      before,
+      after,
+      reason,
+      actorId,
+      ipAddress,
+    });
+
+    return serializeTransaction(updated);
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }

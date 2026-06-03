@@ -6,6 +6,7 @@ import type { CreateUserInput, UpdateUserInput } from "../services/user-service.
 const roleSchema = z.enum(["admin", "manager", "analyst", "viewer"]);
 
 const createUserSchema = z.object({
+  username: z.string().min(3).regex(/^[a-zA-Z0-9_]+$/, "Apenas letras, números e underscore"),
   email: z.string().email(),
   name: z.string().min(1),
   password: z.string().min(8),

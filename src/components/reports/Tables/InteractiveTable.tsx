@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +17,7 @@ import {
   Eye,
   EyeOff,
   X,
+  Trash2,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -42,6 +42,9 @@ interface InteractiveTableProps<T> {
   searchable?: boolean;
   selectable?: boolean;
   onExport?: (selectedItems: T[]) => void;
+  onDeleteSelected?: (selectedItems: T[], clearSelection: () => void) => void;
+  deleteLabel?: string;
+  selectionDescription?: string;
   isLoading?: boolean;
 }
 
@@ -78,6 +81,9 @@ export function InteractiveTable<T extends Record<string, any>>({
   searchable = true,
   selectable = true,
   onExport,
+  onDeleteSelected,
+  deleteLabel = 'Apagar',
+  selectionDescription,
   isLoading,
 }: InteractiveTableProps<T>) {
   const [search, setSearch] = useState('');
@@ -142,6 +148,12 @@ export function InteractiveTable<T extends Record<string, any>>({
     if (!onExport) return;
     const selected = Array.from(selectedItems).map((i) => sortedData[i]);
     onExport(selected.length > 0 ? selected : sortedData);
+  };
+
+  const handleDeleteSelected = () => {
+    if (!onDeleteSelected || selectedItems.size === 0) return;
+    const selected = Array.from(selectedItems).map((i) => sortedData[i]).filter(Boolean);
+    onDeleteSelected(selected, () => setSelectedItems(new Set()));
   };
 
   const getSortIcon = (col: keyof T) => {
@@ -217,23 +229,32 @@ export function InteractiveTable<T extends Record<string, any>>({
             </div>
           )}
 
-          <AnimatePresence>
-            {selectedItems.size > 0 && (
-              <motion.div
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                className="flex items-center gap-2"
-              >
-                <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
-                  {selectedItems.size} selecionados
-                </Badge>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedItems(new Set())} className="h-6 w-6 p-0">
-                  <X className="h-3.5 w-3.5" />
+          {selectedItems.size > 0 && (
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
+                {selectedItems.size} selecionados
+              </Badge>
+              {selectionDescription && (
+                <span className="max-w-sm truncate text-xs text-muted-foreground">
+                  {selectionDescription}
+                </span>
+              )}
+              {onDeleteSelected && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeleteSelected}
+                  className="h-7 gap-1.5 rounded-lg px-2.5 text-xs"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deleteLabel} ({selectedItems.size})
                 </Button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              )}
+              <Button variant="ghost" size="sm" onClick={() => setSelectedItems(new Set())} className="h-6 w-6 p-0">
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
 
           <div className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
             {isLoading ? '' : `${sortedData.length} resultado${sortedData.length !== 1 ? 's' : ''}`}

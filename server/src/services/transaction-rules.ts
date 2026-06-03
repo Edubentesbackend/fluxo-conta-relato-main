@@ -5,6 +5,7 @@ export interface BasicTransactionRuleInput {
   destinationAccountId: string;
   transactionDate: Date;
   amount: number;
+  allowFutureDate?: boolean;
 }
 
 export function validateBasicTransactionRules(input: BasicTransactionRuleInput) {
@@ -16,7 +17,7 @@ export function validateBasicTransactionRules(input: BasicTransactionRuleInput) 
     throw badRequest("Data da transacao invalida");
   }
 
-  if (input.transactionDate.getTime() > Date.now() + 60_000) {
+  if (!input.allowFutureDate && input.transactionDate.getTime() > Date.now() + 60_000) {
     throw badRequest("A data da transacao nao pode ser futura");
   }
 

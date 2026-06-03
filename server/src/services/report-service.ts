@@ -1,10 +1,11 @@
-import type { Prisma } from "@prisma/client";
+import type { LoanSettlementReviewStatus, Prisma } from "@prisma/client";
 import { ADM_ACCOUNT_NUMBER } from "../constants/index.js";
 import { prisma } from "../lib/prisma.js";
 import { badRequest, notFound } from "../utils/errors.js";
 import { positionFromBalance, serializeAccount, serializeTransaction } from "../utils/serialize.js";
 import { buildTransactionWhere, type TransactionFilters } from "./transaction-service.js";
 import {
+  calculateLoanSettlementSnapshot,
   calculateHistoricalLoanSnapshot,
   matchesLoanVisibility,
   resolveLoanCutoff,
@@ -225,7 +226,42 @@ export interface LoanReportFilters {
   loanStatus?: LoanVisibility;
 }
 
+export type LoanSettlementDirection = "adm_owes_projects" | "projects_owe_adm" | "between_projects";
+
+export interface LoanSettlementFilters {
+  settledStartDate?: string;
+  settledEndDate?: string;
+  projectId?: string;
+  direction?: LoanSettlementDirection;
+  search?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  onlyWithCorrections?: boolean;
+}
+
+export interface CreateLoanSettlementReviewInput {
+  reviewStatus: LoanSettlementReviewStatus;
+  reason: string;
+  notes?: string;
+}
+
 const LOAN_ACCOUNT_INCLUDE = { include: { coordinator: true } } as const;
+const LOAN_SETTLEMENT_REVIEW_INCLUDE = {
+  createdBy: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+    },
+  },
+} as const;
+const CORRECTION_TRANSACTION_TYPES = new Set(["correcao", "estorno"]);
+const REVIEW_STATUSES_REQUIRING_ATTENTION = new Set<LoanSettlementReviewStatus>([
+  "needs_correction",
+  "corrected",
+  "disputed",
+]);
 
 type LoanWithRelations = Prisma.TransactionGetPayload<{
   include: {
@@ -240,6 +276,26 @@ type LoanWithRelations = Prisma.TransactionGetPayload<{
   };
 }>;
 
+type LoanSettlementReviewWithUser = Prisma.LoanSettlementReviewGetPayload<{
+  include: typeof LOAN_SETTLEMENT_REVIEW_INCLUDE;
+}>;
+
+type LoanSettlementWithRelations = Prisma.TransactionGetPayload<{
+  include: {
+    sourceAccount: typeof LOAN_ACCOUNT_INCLUDE;
+    destinationAccount: typeof LOAN_ACCOUNT_INCLUDE;
+    returns: {
+      include: {
+        sourceAccount: typeof LOAN_ACCOUNT_INCLUDE;
+        destinationAccount: typeof LOAN_ACCOUNT_INCLUDE;
+      };
+    };
+    loanSettlementReviews: {
+      include: typeof LOAN_SETTLEMENT_REVIEW_INCLUDE;
+    };
+  };
+}>;
+
 function getLoanInclude(cutoff: Date) {
   return {
     sourceAccount: LOAN_ACCOUNT_INCLUDE,
@@ -248,6 +304,7 @@ function getLoanInclude(cutoff: Date) {
       where: {
         transactionType: "devolucao" as const,
         transactionDate: { lte: cutoff },
+        voidedAt: null,
       },
       include: {
         sourceAccount: LOAN_ACCOUNT_INCLUDE,
@@ -360,6 +417,7 @@ async function loadAdmLoans(filters: LoanReportFilters = {}) {
     where: {
       transactionType: "emprestimo",
       transactionDate: { lte: cutoff },
+      voidedAt: null,
       OR: [
         {
           sourceAccount: { accountType: "projeto" },
@@ -508,6 +566,275 @@ export async function getAdmPositionExport(filters: LoanReportFilters = {}) {
   };
 }
 
+function parseOptionalDate(value?: string, fieldName = "Data") {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw badRequest(`${fieldName} invalida`);
+  return date;
+}
+
+function buildLoanSettlementWhere(
+  admAccountId: string,
+  filters: LoanSettlementFilters,
+): Prisma.TransactionWhereInput {
+  const directionConditions: Prisma.TransactionWhereInput[] = [];
+  if (!filters.direction || filters.direction === "adm_owes_projects") {
+    directionConditions.push({
+      sourceAccount: { accountType: "projeto" },
+      destinationAccountId: admAccountId,
+    });
+  }
+  if (!filters.direction || filters.direction === "projects_owe_adm") {
+    directionConditions.push({
+      sourceAccountId: admAccountId,
+      destinationAccount: { accountType: "projeto" },
+    });
+  }
+  if (!filters.direction || filters.direction === "between_projects") {
+    directionConditions.push({
+      sourceAccount: { accountType: "projeto" },
+      destinationAccount: { accountType: "projeto" },
+    });
+  }
+
+  const and: Prisma.TransactionWhereInput[] = [{ OR: directionConditions }];
+
+  if (filters.projectId) {
+    and.push({
+      OR: [
+        { sourceAccountId: filters.projectId },
+        { destinationAccountId: filters.projectId },
+      ],
+    });
+  }
+
+  if (filters.search?.trim()) {
+    const search = filters.search.trim();
+    and.push({
+      OR: [
+        { uniqueIdentifier: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+        { sourceAccount: { name: { contains: search, mode: "insensitive" } } },
+        { sourceAccount: { accountNumber: { contains: search, mode: "insensitive" } } },
+        { destinationAccount: { name: { contains: search, mode: "insensitive" } } },
+        { destinationAccount: { accountNumber: { contains: search, mode: "insensitive" } } },
+      ],
+    });
+  }
+
+  if (filters.minAmount !== undefined || filters.maxAmount !== undefined) {
+    and.push({
+      amount: {
+        gte: filters.minAmount,
+        lte: filters.maxAmount,
+      },
+    });
+  }
+
+  return {
+    transactionType: "emprestimo",
+    voidedAt: null,
+    AND: and,
+  };
+}
+
+function resolveSettlementDirection(loan: LoanSettlementWithRelations, admAccountId: string): LoanSettlementDirection {
+  if (loan.sourceAccountId === admAccountId) return "projects_owe_adm";
+  if (loan.destinationAccountId === admAccountId) return "adm_owes_projects";
+  return "between_projects";
+}
+
+function resolveSettlementProject(loan: LoanSettlementWithRelations, direction: LoanSettlementDirection) {
+  if (direction === "between_projects") return null;
+  return serializeAccount(direction === "adm_owes_projects" ? loan.sourceAccount : loan.destinationAccount);
+}
+
+function serializeLoanSettlementReview(review: LoanSettlementReviewWithUser) {
+  return {
+    id: review.id,
+    loan_id: review.loanId,
+    review_status: review.reviewStatus,
+    reason: review.reason,
+    notes: review.notes,
+    created_by_id: review.createdById,
+    created_by_name: review.createdBy?.name ?? null,
+    created_by_email: review.createdBy?.email ?? null,
+    created_at: review.createdAt.toISOString(),
+  };
+}
+
+function buildLoanSettlementItem(loan: LoanSettlementWithRelations, admAccountId: string) {
+  const returnMovements = loan.returns.filter((movement) => movement.transactionType === "devolucao");
+  const snapshot = calculateLoanSettlementSnapshot(
+    Number(loan.amount),
+    loan.transactionDate,
+    returnMovements.map((movement) => ({
+      amount: Number(movement.amount),
+      transactionDate: movement.transactionDate,
+    })),
+  );
+
+  if (!snapshot.settled || !snapshot.settledAt) return null;
+
+  const direction = resolveSettlementDirection(loan, admAccountId);
+  const reviews = loan.loanSettlementReviews.map(serializeLoanSettlementReview);
+  const latestReview = reviews[0] ?? null;
+  const relatedMovements = loan.returns.map(serializeTransaction);
+  const hasCorrections = loan.returns.some((movement) => CORRECTION_TRANSACTION_TYPES.has(movement.transactionType));
+
+  return {
+    direction,
+    project: resolveSettlementProject(loan, direction),
+    creditor: serializeAccount(loan.sourceAccount),
+    debtor: serializeAccount(loan.destinationAccount),
+    loan: {
+      ...serializeTransaction(loan),
+      status: snapshot.status,
+    },
+    movements: relatedMovements,
+    reviews,
+    latest_review: latestReview,
+    borrowed: snapshot.borrowed,
+    returned: snapshot.returned,
+    pending: snapshot.pending,
+    settled_at: snapshot.settledAt.toISOString(),
+    days_to_settlement: snapshot.daysToSettlement,
+    return_percentage: snapshot.returnPercentage,
+    has_corrections: hasCorrections,
+    needs_attention: hasCorrections || Boolean(
+      latestReview && REVIEW_STATUSES_REQUIRING_ATTENTION.has(latestReview.review_status),
+    ),
+  };
+}
+
+export async function getLoanSettlements(filters: LoanSettlementFilters = {}) {
+  const settledStartDate = parseOptionalDate(filters.settledStartDate, "Data inicial da quitacao");
+  const settledEndDate = parseOptionalDate(filters.settledEndDate, "Data final da quitacao");
+
+  if (settledStartDate && settledEndDate && settledStartDate > settledEndDate) {
+    throw badRequest("Data inicial da quitacao nao pode ser posterior a data final");
+  }
+
+  const admAccount = await getRequiredAdmAccount();
+  const loans = await prisma.transaction.findMany({
+    where: buildLoanSettlementWhere(admAccount.id, filters),
+    include: {
+      sourceAccount: LOAN_ACCOUNT_INCLUDE,
+      destinationAccount: LOAN_ACCOUNT_INCLUDE,
+      returns: {
+        where: {
+          transactionType: { in: ["devolucao", "correcao", "estorno"] },
+          voidedAt: null,
+        },
+        include: {
+          sourceAccount: LOAN_ACCOUNT_INCLUDE,
+          destinationAccount: LOAN_ACCOUNT_INCLUDE,
+        },
+        orderBy: [
+          { transactionDate: "asc" },
+          { createdAt: "asc" },
+        ],
+      },
+      loanSettlementReviews: {
+        include: LOAN_SETTLEMENT_REVIEW_INCLUDE,
+        orderBy: { createdAt: "desc" },
+      },
+    },
+    orderBy: { transactionDate: "desc" },
+  });
+
+  const settlements = loans
+    .map((loan) => buildLoanSettlementItem(loan, admAccount.id))
+    .filter((item): item is NonNullable<typeof item> => {
+      if (!item) return false;
+      const settledAt = new Date(item.settled_at);
+      if (settledStartDate && settledAt < settledStartDate) return false;
+      if (settledEndDate && settledAt > settledEndDate) return false;
+      if (filters.onlyWithCorrections && !item.needs_attention) return false;
+      return true;
+    })
+    .sort((a, b) => b.settled_at.localeCompare(a.settled_at));
+
+  return {
+    generated_at: new Date().toISOString(),
+    filters,
+    summary: {
+      settled_count: settlements.length,
+      reviewed_count: settlements.filter((item) => item.latest_review?.review_status === "reviewed").length,
+      needs_correction_count: settlements.filter((item) => item.latest_review?.review_status === "needs_correction").length,
+      corrected_count: settlements.filter((item) => item.latest_review?.review_status === "corrected").length,
+      disputed_count: settlements.filter((item) => item.latest_review?.review_status === "disputed").length,
+      with_corrections_count: settlements.filter((item) => item.has_corrections).length,
+      total_borrowed: settlements.reduce((sum, item) => sum + item.borrowed, 0),
+      total_returned: settlements.reduce((sum, item) => sum + item.returned, 0),
+    },
+    settlements,
+  };
+}
+
+export async function createLoanSettlementReview(
+  loanId: string,
+  input: CreateLoanSettlementReviewInput,
+  actorId: string,
+  ipAddress?: string,
+) {
+  return prisma.$transaction(async (tx) => {
+    const loan = await tx.transaction.findUnique({
+      where: { id: loanId },
+      include: {
+        returns: {
+          where: { transactionType: "devolucao" },
+        },
+      },
+    });
+
+    if (!loan || loan.transactionType !== "emprestimo") {
+      throw notFound("Emprestimo nao encontrado");
+    }
+
+    const snapshot = calculateLoanSettlementSnapshot(
+      Number(loan.amount),
+      loan.transactionDate,
+      loan.returns.map((movement) => ({
+        amount: Number(movement.amount),
+        transactionDate: movement.transactionDate,
+      })),
+    );
+
+    if (!snapshot.settled) {
+      throw badRequest("Emprestimo ainda nao esta quitado");
+    }
+
+    const review = await tx.loanSettlementReview.create({
+      data: {
+        loanId,
+        reviewStatus: input.reviewStatus,
+        reason: input.reason,
+        notes: input.notes?.trim() || null,
+        createdById: actorId,
+      },
+      include: LOAN_SETTLEMENT_REVIEW_INCLUDE,
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: actorId,
+        action: "loan_settlement.reviewed",
+        entityType: "transaction",
+        entityId: loanId,
+        metadata: {
+          review_id: review.id,
+          review_status: review.reviewStatus,
+          reason: review.reason,
+        },
+        ipAddress,
+      },
+    });
+
+    return serializeLoanSettlementReview(review);
+  });
+}
+
 export async function getInterProjectLoans(filters: LoanReportFilters = {}) {
   const cutoff = resolveLoanCutoff(filters.asOf);
   const visibility = filters.loanStatus ?? "open";
@@ -515,6 +842,7 @@ export async function getInterProjectLoans(filters: LoanReportFilters = {}) {
     where: {
       transactionType: "emprestimo",
       transactionDate: { lte: cutoff },
+      voidedAt: null,
       sourceAccount: { accountType: "projeto" },
       destinationAccount: { accountType: "projeto" },
     },
@@ -522,13 +850,21 @@ export async function getInterProjectLoans(filters: LoanReportFilters = {}) {
     orderBy: { transactionDate: "asc" },
   });
 
+  type LoanDetail = {
+    loan: ReturnType<typeof serializeTransaction> & { status: string };
+    returns: ReturnType<typeof serializeTransaction>[];
+    borrowed: number;
+    returned: number;
+    pending: number;
+  };
+
   type PairEntry = {
     creditor: ReturnType<typeof serializeAccount>;
     debtor: ReturnType<typeof serializeAccount>;
     borrowed: number;
     returned: number;
     oldest_date: string;
-    transactions: ReturnType<typeof serializeTransaction>[];
+    transactions: LoanDetail[];
   };
 
   const byPair = new Map<string, PairEntry>();
@@ -540,11 +876,19 @@ export async function getInterProjectLoans(filters: LoanReportFilters = {}) {
     const key = `${loan.sourceAccountId}__${loan.destinationAccountId}`;
     const dateStr = loan.transactionDate.toISOString();
 
+    const loanDetail: LoanDetail = {
+      loan: snapshot.loan,
+      returns: snapshot.returns,
+      borrowed: snapshot.borrowed,
+      returned: snapshot.returned,
+      pending: snapshot.pending,
+    };
+
     const existing = byPair.get(key);
     if (existing) {
       existing.borrowed += snapshot.borrowed;
       existing.returned += snapshot.returned;
-      existing.transactions.push(snapshot.loan);
+      existing.transactions.push(loanDetail);
       if (dateStr < existing.oldest_date) existing.oldest_date = dateStr;
     } else {
       byPair.set(key, {
@@ -553,7 +897,7 @@ export async function getInterProjectLoans(filters: LoanReportFilters = {}) {
         borrowed: snapshot.borrowed,
         returned: snapshot.returned,
         oldest_date: dateStr,
-        transactions: [snapshot.loan],
+        transactions: [loanDetail],
       });
     }
   }
@@ -589,7 +933,7 @@ export async function getReturnsReport(filters: TransactionFilters = {}) {
       sourceAccount: { include: { coordinator: true } },
       destinationAccount: { include: { coordinator: true } },
       returns: {
-        where: { transactionType: "devolucao" },
+        where: { transactionType: "devolucao", voidedAt: null },
         include: {
           sourceAccount: { include: { coordinator: true } },
           destinationAccount: { include: { coordinator: true } },
