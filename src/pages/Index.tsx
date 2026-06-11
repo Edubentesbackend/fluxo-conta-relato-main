@@ -1,9 +1,9 @@
 import React, { lazy, Suspense, useState } from 'react';
 import { motion } from 'framer-motion';
+import { BrandLogo } from '@/components/BrandLogo';
 import { UserAccountMenu } from '@/components/UserAccountMenu';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import {
-  TrendingUp,
   Plus,
   Upload,
   BarChart3,
@@ -92,14 +92,11 @@ const Index = () => {
       <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="container mx-auto flex h-14 items-center justify-between gap-2 px-3 sm:h-16 sm:px-4">
           {/* Logo */}
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-hero">
-              <TrendingUp className="h-4 w-4 text-white" />
-            </div>
-            <span className="hidden text-base font-semibold tracking-tight sm:block">
-              Fluxo<span className="text-gradient-hero">Financeiro</span>
-            </span>
-          </div>
+          <BrandLogo
+            className="shrink-0"
+            imageClassName="h-8 w-8"
+            textClassName="hidden text-base font-semibold sm:block"
+          />
 
           {/* Nav — desktop */}
           <nav className="hidden md:flex flex-1 items-center justify-center">

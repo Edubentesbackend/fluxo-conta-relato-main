@@ -1,5 +1,4 @@
 import type { FastifyInstance } from "fastify";
-import { env } from "../env.js";
 import { prisma } from "../lib/prisma.js";
 
 export async function statusRoutes(app: FastifyInstance) {
@@ -41,13 +40,6 @@ export async function statusRoutes(app: FastifyInstance) {
           status: "online",
           responseTime: 0,
           description: "JWT e refresh tokens locais",
-        },
-        {
-          id: "claude",
-          name: "Claude IA",
-          status: env.ANTHROPIC_API_KEY ? "online" : "warning",
-          responseTime: 0,
-          description: env.ANTHROPIC_API_KEY ? "Chave configurada" : "ANTHROPIC_API_KEY ausente",
         },
       ],
     };

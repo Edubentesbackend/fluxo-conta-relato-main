@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { aiApi, reportsApi } from '@/lib/apiClient';
+import { reportsApi } from '@/lib/apiClient';
 import { AccountSummary, TransactionType } from '@/types/database';
 import { TransactionFilters } from './useTransactions';
 
@@ -65,18 +65,5 @@ export const useOptimizedAccountSummaries = (filters?: TransactionFilters) => {
     },
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
-  });
-};
-
-export const useExecutiveInsights = (filters?: TransactionFilters, enabled = true) => {
-  return useQuery({
-    queryKey: ['executive-insights-ai', filters],
-    queryFn: async (): Promise<{ insights: string; model: string }> => {
-      return aiApi.executiveInsights(filters);
-    },
-    enabled,
-    retry: false,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 20 * 60 * 1000,
   });
 };

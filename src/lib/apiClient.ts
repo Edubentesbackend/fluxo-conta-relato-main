@@ -132,7 +132,7 @@ async function buildResponseError(response: Response) {
   const errorBody = await response.json().catch(() => null);
   const message = errorBody?.error || `Erro HTTP ${response.status}`;
   const code = errorBody?.code;
-  if (response.status >= 500 && code !== 'CLAUDE_NOT_CONFIGURED') markApiUnavailable(message);
+  if (response.status >= 500) markApiUnavailable(message);
   return new ApiRequestError(message, response.status, code);
 }
 
@@ -312,11 +312,6 @@ export const reportsApi = {
     body: { reviewStatus: LoanSettlementReviewStatus; reason: string; notes?: string },
   ) =>
     apiRequest<T>(`/reports/loan-settlements/${loanId}/review`, { method: "POST", body }),
-};
-
-export const aiApi = {
-  executiveInsights: <T>(filters?: TransactionFilters) =>
-    apiRequest<T>("/ai/executive-insights", { method: "POST", body: { filters: filters || {} } }),
 };
 
 export const statusApi = {

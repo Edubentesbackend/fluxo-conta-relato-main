@@ -15,7 +15,6 @@ import { userRoutes } from "./routes/users.js";
 import { accountRoutes } from "./routes/accounts.js";
 import { transactionRoutes } from "./routes/transactions.js";
 import { reportRoutes } from "./routes/reports.js";
-import { aiRoutes } from "./routes/ai.js";
 import { statusRoutes } from "./routes/status.js";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -70,7 +69,6 @@ export function buildApp() {
   app.register(accountRoutes, { prefix: "/api/accounts" });
   app.register(transactionRoutes, { prefix: "/api/transactions" });
   app.register(reportRoutes, { prefix: "/api/reports" });
-  app.register(aiRoutes, { prefix: "/api/ai" });
 
   const frontendDist = findFrontendDist();
   if (frontendDist) {

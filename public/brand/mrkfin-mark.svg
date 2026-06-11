@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">MRKFIN</title>
+  <desc id="desc">Icone MRKFIN - Sistema de Controle Financeiro Muraki</desc>
+  <rect width="512" height="512" fill="#000"/>
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M138 426C94 314 104 207 168 139 229 73 337 52 439 55c4 101-16 209-82 270-63 59-160 86-219 101Z" stroke-width="26"/>
+    <path d="M135 403l84-95 47 12 50-102 38-92" stroke-width="27"/>
+    <path d="M317 118h58v58" stroke-width="27"/>
+  </g>
+  <g fill="#fff">
+    <circle cx="219" cy="308" r="24"/>
+    <circle cx="266" cy="320" r="24"/>
+    <circle cx="316" cy="218" r="15"/>
+    <circle cx="354" cy="126" r="13"/>
+  </g>
+</svg>

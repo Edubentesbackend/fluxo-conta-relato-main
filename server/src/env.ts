@@ -10,8 +10,6 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("15m"),
   REFRESH_TOKEN_DAYS: z.coerce.number().int().positive().default(30),
   PASSWORD_PEPPER: z.string().min(32),
-  ANTHROPIC_API_KEY: z.string().optional().default(""),
-  CLAUDE_MODEL: z.string().default("claude-3-5-sonnet-latest"),
 });
 
 export const env = envSchema.parse(process.env);

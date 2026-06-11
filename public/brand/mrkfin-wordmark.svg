@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 768" role="img" aria-labelledby="title desc">
+  <title id="title">MRKFIN</title>
+  <desc id="desc">MRKFIN - Sistema de Controle Financeiro Muraki</desc>
+  <rect width="2048" height="768" fill="#000"/>
+  <g fill="#fff" font-family="Arial Black, Impact, Arial, sans-serif" font-weight="900">
+    <text x="155" y="405" font-size="300" letter-spacing="-18">MRK</text>
+  </g>
+  <g fill="none" stroke="#fff" stroke-linejoin="miter" font-family="Arial Black, Impact, Arial, sans-serif" font-weight="900">
+    <text x="987" y="405" font-size="300" letter-spacing="-8" stroke-width="13">FIN</text>
+  </g>
+  <g transform="translate(1710 203) scale(.43)" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M138 426C94 314 104 207 168 139 229 73 337 52 439 55c4 101-16 209-82 270-63 59-160 86-219 101Z" stroke-width="26"/>
+    <path d="M135 403l84-95 47 12 50-102 38-92" stroke-width="27"/>
+    <path d="M317 118h58v58" stroke-width="27"/>
+    <circle cx="219" cy="308" r="24" fill="#fff" stroke="none"/>
+    <circle cx="266" cy="320" r="24" fill="#fff" stroke="none"/>
+    <circle cx="316" cy="218" r="15" fill="#fff" stroke="none"/>
+    <circle cx="354" cy="126" r="13" fill="#fff" stroke="none"/>
+  </g>
+  <text x="436" y="552" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="38" font-weight="700" letter-spacing="8">
+    SISTEMA DE CONTROLE FINANCEIRO MURAKI
+  </text>
+</svg>

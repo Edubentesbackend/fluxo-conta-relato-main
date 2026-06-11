@@ -54,7 +54,6 @@ function invalidateTransactionReports(queryClient: ReturnType<typeof useQueryCli
   queryClient.invalidateQueries({ queryKey: ['optimized-account-summaries'] });
   queryClient.invalidateQueries({ queryKey: ['account-summaries'] });
   queryClient.invalidateQueries({ queryKey: ['account-breakdown'] });
-  queryClient.invalidateQueries({ queryKey: ['executive-insights-ai'] });
   queryClient.invalidateQueries({ queryKey: ['adm-position'] });
   queryClient.invalidateQueries({ queryKey: ['adm-project-details'] });
   queryClient.invalidateQueries({ queryKey: ['inter-project-loans'] });

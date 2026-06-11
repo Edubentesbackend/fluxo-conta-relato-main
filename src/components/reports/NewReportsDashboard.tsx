@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { BarChart3, FileText, TrendingUp, TrendingDown, Filter, RefreshCw, Download, Play, Eye, Settings, Bell, BotOff } from 'lucide-react';
+import { BarChart3, FileText, TrendingUp, TrendingDown, Filter, RefreshCw, Download, Play, Eye, Settings, Bell } from 'lucide-react';
 import { ApiRequestError } from '@/lib/apiClient';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -36,7 +36,7 @@ import { ReturnsTracker } from '@/components/reports/ReturnsTracker';
 import { SegregatedBalanceReport } from '@/components/reports/SegregatedBalanceReport';
 import { LoansDashboard } from '@/components/reports/LoansDashboard';
 
-import { useTransactionInsights, useMonthlyVolumes, useOptimizedAccountSummaries, useExecutiveInsights } from '@/hooks/useReportsData';
+import { useTransactionInsights, useMonthlyVolumes, useOptimizedAccountSummaries } from '@/hooks/useReportsData';
 import { useTransactions, useVoidTransaction, TransactionWithAccounts } from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
 import { formatCurrency } from '@/utils/currency';
@@ -65,12 +65,6 @@ export const NewReportsDashboard = () => {
 
   // Data hooks
   const { data: insights, isLoading: insightsLoading, refetch: refetchInsights } = useTransactionInsights(filters);
-  const { data: executiveInsights, isLoading: executiveInsightsLoading, error: executiveInsightsError } = useExecutiveInsights(
-    filters,
-    selectedProfile === 'ceo'
-  );
-  const aiNotConfigured = executiveInsightsError instanceof ApiRequestError && executiveInsightsError.code === 'CLAUDE_NOT_CONFIGURED';
-  
   const { data: monthlyData, isLoading: monthlyLoading } = useMonthlyVolumes(filters, 12);
   const { data: accountSummaries, isLoading: summariesLoading } = useOptimizedAccountSummaries(filters);
   const { data: accounts } = useAccounts(true);
@@ -239,7 +233,6 @@ export const NewReportsDashboard = () => {
     queryClient.invalidateQueries({ queryKey: ['monthly-volumes'] });
     queryClient.invalidateQueries({ queryKey: ['optimized-account-summaries'] });
     queryClient.invalidateQueries({ queryKey: ['transactions'] });
-    queryClient.invalidateQueries({ queryKey: ['executive-insights-ai'] });
   };
 
   const handleRequestVoidTransactions = (
@@ -332,8 +325,8 @@ export const NewReportsDashboard = () => {
     },
     {
       id: "executive-summary",
-      title: "Resumo Executivo com IA",
-      content: "Insights automaticos gerados por Claude para tomada de decisao rapida. Clique no card para expandir e ver mais detalhes.",
+      title: "Resumo Executivo",
+      content: "Insights automaticos calculados localmente para tomada de decisao rapida. Clique no card para expandir e ver mais detalhes.",
       target: "[data-tour='executive-summary']", 
       position: "bottom" as const
     },
@@ -496,20 +489,6 @@ export const NewReportsDashboard = () => {
             />
           </motion.div>
 
-          {/* AI not configured notice */}
-          {aiNotConfigured && selectedProfile === 'ceo' && (
-            <Card className="border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
-              <CardContent className="flex items-center gap-3 p-4 text-amber-700 dark:text-amber-400">
-                <BotOff className="h-5 w-5 shrink-0" />
-                <p className="text-sm">
-                  <strong>Insights de IA não disponíveis.</strong> Configure a variável{" "}
-                  <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">ANTHROPIC_API_KEY</code>{" "}
-                  no arquivo <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">.env</code> e reinicie o servidor.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Render different dashboard based on selected profile */}
           {selectedProfile === 'ceo' && (
             <CEODashboard 
@@ -525,8 +504,6 @@ export const NewReportsDashboard = () => {
               monthlyData={monthlyData ?? []}
               transactions={transactions ?? []}
               isLoading={insightsLoading || monthlyLoading}
-              aiSummary={executiveInsights?.insights}
-              aiLoading={executiveInsightsLoading}
             />
           )}
 

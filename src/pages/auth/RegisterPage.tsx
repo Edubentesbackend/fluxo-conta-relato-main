@@ -4,6 +4,7 @@ import { UserPlus, TrendingUp, BarChart3, Shield, Zap, ArrowLeft, Eye, EyeOff } 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BrandLogo } from "@/components/BrandLogo";
 import { useAuth } from "@/contexts/AuthContext";
 
 const features = [
@@ -63,7 +64,7 @@ export function RegisterPage({ onBack }: RegisterPageProps) {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex overflow-x-hidden">
       {/* ── Left panel (hero) ── */}
       <div className="hidden lg:flex lg:flex-1 relative overflow-hidden gradient-hero">
         <div className="absolute -top-20 -right-20 h-80 w-80 rounded-full bg-white/10 blur-2xl" />
@@ -71,12 +72,7 @@ export function RegisterPage({ onBack }: RegisterPageProps) {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-64 w-64 rounded-full bg-white/5 blur-xl" />
 
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
-              <TrendingUp className="h-5 w-5 text-white" />
-            </div>
-            <span className="text-xl font-bold tracking-tight">FluxoFinanceiro</span>
-          </div>
+          <BrandLogo variant="wordmark" className="max-w-xs rounded-lg shadow-large" />
 
           <motion.div
             initial={{ opacity: 0, y: 24 }}
@@ -119,20 +115,19 @@ export function RegisterPage({ onBack }: RegisterPageProps) {
       </div>
 
       {/* ── Right panel (form) ── */}
-      <div className="flex flex-1 items-center justify-center bg-background p-8">
+      <div className="flex min-w-0 flex-1 items-center justify-center bg-background p-6 sm:p-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="w-full max-w-md space-y-6"
+          className="w-full min-w-0 max-w-[342px] space-y-6 sm:max-w-md"
         >
           {/* Mobile logo */}
-          <div className="flex lg:hidden items-center gap-2 mb-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-hero">
-              <TrendingUp className="h-4 w-4 text-white" />
-            </div>
-            <span className="font-bold text-gradient-hero">FluxoFinanceiro</span>
-          </div>
+          <BrandLogo
+            className="mb-2 lg:hidden"
+            imageClassName="h-8 w-8"
+            textClassName="text-base text-foreground"
+          />
 
           <div className="space-y-1.5">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 mb-4">

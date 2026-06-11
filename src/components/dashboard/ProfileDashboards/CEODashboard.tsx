@@ -12,11 +12,9 @@ interface CEODashboardProps {
   monthlyData: MonthlyVolume[];
   transactions: TransactionWithAccounts[];
   isLoading?: boolean;
-  aiSummary?: string;
-  aiLoading?: boolean;
 }
 
-export function CEODashboard({ insights, monthlyData, transactions, isLoading, aiSummary, aiLoading }: CEODashboardProps) {
+export function CEODashboard({ insights, monthlyData, transactions, isLoading }: CEODashboardProps) {
   return (
     <div className="space-y-6" data-tour="ceo-dashboard">
       <motion.div
@@ -75,8 +73,6 @@ export function CEODashboard({ insights, monthlyData, transactions, isLoading, a
         insights={insights} 
         monthlyData={monthlyData}
         isLoading={isLoading}
-        aiSummary={aiSummary}
-        aiLoading={aiLoading}
       />
 
       <div className="grid gap-6 md:grid-cols-2" data-tour="charts">
